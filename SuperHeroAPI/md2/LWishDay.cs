@@ -14,4 +14,6 @@ public partial class LWishDay
     public TimeOnly? Endtime { get; set; }
 
     public int? ListenerId { get; set; }
+
+    public virtual Listener? Listener { get; set; }
 }

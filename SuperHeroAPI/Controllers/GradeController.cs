@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Grade
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Grade>>> GetGrade()
+        public async Task<ActionResult<IEnumerable<Grade>>> GetGrades()
         {
-          if (_context.Grade == null)
+          if (_context.Grades == null)
           {
               return NotFound();
           }
-            return await _context.Grade.ToListAsync();
+            return await _context.Grades.ToListAsync();
         }
 
         // GET: api/Grade/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Grade>> GetGrade(int id)
         {
-          if (_context.Grade == null)
+          if (_context.Grades == null)
           {
               return NotFound();
           }
-            var grade = await _context.Grade.FindAsync(id);
+            var grade = await _context.Grades.FindAsync(id);
 
             if (grade == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Grade>> PostGrade(Grade grade)
         {
-          if (_context.Grade == null)
+          if (_context.Grades == null)
           {
-              return Problem("Entity set 'DataContext.Grade'  is null.");
+              return Problem("Entity set 'DataContext.Grades'  is null.");
           }
-            _context.Grade.Add(grade);
+            _context.Grades.Add(grade);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetGrade", new { id = grade.GradeId }, grade);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteGrade(int id)
         {
-            if (_context.Grade == null)
+            if (_context.Grades == null)
             {
                 return NotFound();
             }
-            var grade = await _context.Grade.FindAsync(id);
+            var grade = await _context.Grades.FindAsync(id);
             if (grade == null)
             {
                 return NotFound();
             }
 
-            _context.Grade.Remove(grade);
+            _context.Grades.Remove(grade);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool GradeExists(int id)
         {
-            return (_context.Grade?.Any(e => e.GradeId == id)).GetValueOrDefault();
+            return (_context.Grades?.Any(e => e.GradeId == id)).GetValueOrDefault();
         }
     }
 }

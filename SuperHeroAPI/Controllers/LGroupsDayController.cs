@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/LGroupsDay
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<LGroupsDay>>> GetLGroupsDay()
+        public async Task<ActionResult<IEnumerable<LGroupsDay>>> GetLGroupsDays()
         {
-          if (_context.LGroupsDay == null)
+          if (_context.LGroupsDays == null)
           {
               return NotFound();
           }
-            return await _context.LGroupsDay.ToListAsync();
+            return await _context.LGroupsDays.ToListAsync();
         }
 
         // GET: api/LGroupsDay/5
         [HttpGet("{id}")]
         public async Task<ActionResult<LGroupsDay>> GetLGroupsDay(int id)
         {
-          if (_context.LGroupsDay == null)
+          if (_context.LGroupsDays == null)
           {
               return NotFound();
           }
-            var lGroupsDay = await _context.LGroupsDay.FindAsync(id);
+            var lGroupsDay = await _context.LGroupsDays.FindAsync(id);
 
             if (lGroupsDay == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<LGroupsDay>> PostLGroupsDay(LGroupsDay lGroupsDay)
         {
-          if (_context.LGroupsDay == null)
+          if (_context.LGroupsDays == null)
           {
-              return Problem("Entity set 'DataContext.LGroupsDay'  is null.");
+              return Problem("Entity set 'DataContext.LGroupsDays'  is null.");
           }
-            _context.LGroupsDay.Add(lGroupsDay);
+            _context.LGroupsDays.Add(lGroupsDay);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetLGroupsDay", new { id = lGroupsDay.LGroupsDaysId }, lGroupsDay);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLGroupsDay(int id)
         {
-            if (_context.LGroupsDay == null)
+            if (_context.LGroupsDays == null)
             {
                 return NotFound();
             }
-            var lGroupsDay = await _context.LGroupsDay.FindAsync(id);
+            var lGroupsDay = await _context.LGroupsDays.FindAsync(id);
             if (lGroupsDay == null)
             {
                 return NotFound();
             }
 
-            _context.LGroupsDay.Remove(lGroupsDay);
+            _context.LGroupsDays.Remove(lGroupsDay);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool LGroupsDayExists(int id)
         {
-            return (_context.LGroupsDay?.Any(e => e.LGroupsDaysId == id)).GetValueOrDefault();
+            return (_context.LGroupsDays?.Any(e => e.LGroupsDaysId == id)).GetValueOrDefault();
         }
     }
 }

@@ -1,5 +1,4 @@
-﻿/*
-namespace SuperHeroAPI.Services.SuperHeroService
+﻿namespace SuperHeroAPI.Services.SuperHeroService
 {
     public class UserService : IUserService
     {
@@ -17,7 +16,7 @@ namespace SuperHeroAPI.Services.SuperHeroService
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.Username = request.Username;
             user.PasswordHash = passwordHash;
-            user.Roles = new List<Role> { new Role { RoleName = "guest" }, new Role { RoleName = "otherRole" } };
+            user.UserRoles = new List<UserRole> { new UserRole { User = user, RoleId = 2 } };
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
@@ -51,26 +50,29 @@ namespace SuperHeroAPI.Services.SuperHeroService
             }
             return user;
         }
-        
+
         public async Task<List<User>?> UpdateUser(int id, UserUpd request)
         {
             var user = await _context.Users.FindAsync(id);
             if (user == null)
                 return null;
 
-            user.Id = id;  
-            user.Username = request.Username;  
-            user.Role = request.Role;
+            // Update user properties
+            user.Username = request.Username;
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
+            // Update user roles
+            user.UserRoles.Clear(); 
+            foreach (var roleId in request.RoleIds)
+            {
+                user.UserRoles.Add(new UserRole { User = user, RoleId = roleId });
+            }
 
             await _context.SaveChangesAsync();
 
             return await _context.Users.ToListAsync();
         }
-        
+
 
     }
 }
-
-*/

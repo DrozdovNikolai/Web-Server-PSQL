@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempDepartament
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempDepartament>>> GetTempDepartament()
+        public async Task<ActionResult<IEnumerable<TempDepartament>>> GetTempDepartaments()
         {
-          if (_context.TempDepartament == null)
+          if (_context.TempDepartaments == null)
           {
               return NotFound();
           }
-            return await _context.TempDepartament.ToListAsync();
+            return await _context.TempDepartaments.ToListAsync();
         }
 
         // GET: api/TempDepartament/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempDepartament>> GetTempDepartament(int id)
         {
-          if (_context.TempDepartament == null)
+          if (_context.TempDepartaments == null)
           {
               return NotFound();
           }
-            var tempDepartament = await _context.TempDepartament.FindAsync(id);
+            var tempDepartament = await _context.TempDepartaments.FindAsync(id);
 
             if (tempDepartament == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempDepartament>> PostTempDepartament(TempDepartament tempDepartament)
         {
-          if (_context.TempDepartament == null)
+          if (_context.TempDepartaments == null)
           {
-              return Problem("Entity set 'DataContext.TempDepartament'  is null.");
+              return Problem("Entity set 'DataContext.TempDepartaments'  is null.");
           }
-            _context.TempDepartament.Add(tempDepartament);
+            _context.TempDepartaments.Add(tempDepartament);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempDepartament", new { id = tempDepartament.DepId }, tempDepartament);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempDepartament(int id)
         {
-            if (_context.TempDepartament == null)
+            if (_context.TempDepartaments == null)
             {
                 return NotFound();
             }
-            var tempDepartament = await _context.TempDepartament.FindAsync(id);
+            var tempDepartament = await _context.TempDepartaments.FindAsync(id);
             if (tempDepartament == null)
             {
                 return NotFound();
             }
 
-            _context.TempDepartament.Remove(tempDepartament);
+            _context.TempDepartaments.Remove(tempDepartament);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempDepartamentExists(int id)
         {
-            return (_context.TempDepartament?.Any(e => e.DepId == id)).GetValueOrDefault();
+            return (_context.TempDepartaments?.Any(e => e.DepId == id)).GetValueOrDefault();
         }
     }
 }

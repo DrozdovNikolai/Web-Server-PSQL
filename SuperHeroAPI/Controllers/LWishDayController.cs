@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/LWishDay
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<LWishDay>>> GetLWishDay()
+        public async Task<ActionResult<IEnumerable<LWishDay>>> GetLWishDays()
         {
-          if (_context.LWishDay == null)
+          if (_context.LWishDays == null)
           {
               return NotFound();
           }
-            return await _context.LWishDay.ToListAsync();
+            return await _context.LWishDays.ToListAsync();
         }
 
         // GET: api/LWishDay/5
         [HttpGet("{id}")]
         public async Task<ActionResult<LWishDay>> GetLWishDay(int id)
         {
-          if (_context.LWishDay == null)
+          if (_context.LWishDays == null)
           {
               return NotFound();
           }
-            var lWishDay = await _context.LWishDay.FindAsync(id);
+            var lWishDay = await _context.LWishDays.FindAsync(id);
 
             if (lWishDay == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<LWishDay>> PostLWishDay(LWishDay lWishDay)
         {
-          if (_context.LWishDay == null)
+          if (_context.LWishDays == null)
           {
-              return Problem("Entity set 'DataContext.LWishDay'  is null.");
+              return Problem("Entity set 'DataContext.LWishDays'  is null.");
           }
-            _context.LWishDay.Add(lWishDay);
+            _context.LWishDays.Add(lWishDay);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetLWishDay", new { id = lWishDay.LWishDayId }, lWishDay);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLWishDay(int id)
         {
-            if (_context.LWishDay == null)
+            if (_context.LWishDays == null)
             {
                 return NotFound();
             }
-            var lWishDay = await _context.LWishDay.FindAsync(id);
+            var lWishDay = await _context.LWishDays.FindAsync(id);
             if (lWishDay == null)
             {
                 return NotFound();
             }
 
-            _context.LWishDay.Remove(lWishDay);
+            _context.LWishDays.Remove(lWishDay);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool LWishDayExists(int id)
         {
-            return (_context.LWishDay?.Any(e => e.LWishDayId == id)).GetValueOrDefault();
+            return (_context.LWishDays?.Any(e => e.LWishDayId == id)).GetValueOrDefault();
         }
     }
 }

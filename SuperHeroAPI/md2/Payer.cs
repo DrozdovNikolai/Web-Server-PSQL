@@ -28,4 +28,6 @@ public partial class Payer
     public string? PhoneNumber { get; set; }
 
     public string? Email { get; set; }
+
+    public virtual ICollection<Contract> Contracts { get; } = new List<Contract>();
 }

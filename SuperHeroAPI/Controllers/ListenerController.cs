@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Listener
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Listener>>> GetListener()
+        public async Task<ActionResult<IEnumerable<Listener>>> GetListeners()
         {
-          if (_context.Listener == null)
+          if (_context.Listeners == null)
           {
               return NotFound();
           }
-            return await _context.Listener.ToListAsync();
+            return await _context.Listeners.ToListAsync();
         }
 
         // GET: api/Listener/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Listener>> GetListener(int id)
         {
-          if (_context.Listener == null)
+          if (_context.Listeners == null)
           {
               return NotFound();
           }
-            var listener = await _context.Listener.FindAsync(id);
+            var listener = await _context.Listeners.FindAsync(id);
 
             if (listener == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Listener>> PostListener(Listener listener)
         {
-          if (_context.Listener == null)
+          if (_context.Listeners == null)
           {
-              return Problem("Entity set 'DataContext.Listener'  is null.");
+              return Problem("Entity set 'DataContext.Listeners'  is null.");
           }
-            _context.Listener.Add(listener);
+            _context.Listeners.Add(listener);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetListener", new { id = listener.Id }, listener);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteListener(int id)
         {
-            if (_context.Listener == null)
+            if (_context.Listeners == null)
             {
                 return NotFound();
             }
-            var listener = await _context.Listener.FindAsync(id);
+            var listener = await _context.Listeners.FindAsync(id);
             if (listener == null)
             {
                 return NotFound();
             }
 
-            _context.Listener.Remove(listener);
+            _context.Listeners.Remove(listener);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool ListenerExists(int id)
         {
-            return (_context.Listener?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.Listeners?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

@@ -13,7 +13,7 @@ public partial class Direction
 
     public bool? Magister { get; set; }
 
-    public virtual ICollection<Group> Groups { get; set; } = new List<Group>();
+    public virtual ICollection<Group> Groups { get; } = new List<Group>();
 
-    public virtual ICollection<Profile> Profiles { get; set; } = new List<Profile>();
+    public virtual ICollection<Profile> Profiles { get; } = new List<Profile>();
 }

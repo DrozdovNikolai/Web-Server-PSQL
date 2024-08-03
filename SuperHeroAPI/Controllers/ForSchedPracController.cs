@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/ForSchedPrac
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ForSchedPrac>>> GetForSchedPrac()
+        public async Task<ActionResult<IEnumerable<ForSchedPrac>>> GetForSchedPracs()
         {
-          if (_context.ForSchedPrac == null)
+          if (_context.ForSchedPracs == null)
           {
               return NotFound();
           }
-            return await _context.ForSchedPrac.ToListAsync();
+            return await _context.ForSchedPracs.ToListAsync();
         }
 
         // GET: api/ForSchedPrac/5
         [HttpGet("{id}")]
         public async Task<ActionResult<ForSchedPrac>> GetForSchedPrac(int id)
         {
-          if (_context.ForSchedPrac == null)
+          if (_context.ForSchedPracs == null)
           {
               return NotFound();
           }
-            var forSchedPrac = await _context.ForSchedPrac.FindAsync(id);
+            var forSchedPrac = await _context.ForSchedPracs.FindAsync(id);
 
             if (forSchedPrac == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<ForSchedPrac>> PostForSchedPrac(ForSchedPrac forSchedPrac)
         {
-          if (_context.ForSchedPrac == null)
+          if (_context.ForSchedPracs == null)
           {
-              return Problem("Entity set 'DataContext.ForSchedPrac'  is null.");
+              return Problem("Entity set 'DataContext.ForSchedPracs'  is null.");
           }
-            _context.ForSchedPrac.Add(forSchedPrac);
+            _context.ForSchedPracs.Add(forSchedPrac);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetForSchedPrac", new { id = forSchedPrac.Id }, forSchedPrac);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteForSchedPrac(int id)
         {
-            if (_context.ForSchedPrac == null)
+            if (_context.ForSchedPracs == null)
             {
                 return NotFound();
             }
-            var forSchedPrac = await _context.ForSchedPrac.FindAsync(id);
+            var forSchedPrac = await _context.ForSchedPracs.FindAsync(id);
             if (forSchedPrac == null)
             {
                 return NotFound();
             }
 
-            _context.ForSchedPrac.Remove(forSchedPrac);
+            _context.ForSchedPracs.Remove(forSchedPrac);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool ForSchedPracExists(int id)
         {
-            return (_context.ForSchedPrac?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.ForSchedPracs?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

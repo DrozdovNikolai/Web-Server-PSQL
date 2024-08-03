@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Teacher
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Teacher>>> GetTeacher()
+        public async Task<ActionResult<IEnumerable<Teacher>>> GetTeachers()
         {
-          if (_context.Teacher == null)
+          if (_context.Teachers == null)
           {
               return NotFound();
           }
-            return await _context.Teacher.ToListAsync();
+            return await _context.Teachers.ToListAsync();
         }
 
         // GET: api/Teacher/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Teacher>> GetTeacher(int id)
         {
-          if (_context.Teacher == null)
+          if (_context.Teachers == null)
           {
               return NotFound();
           }
-            var teacher = await _context.Teacher.FindAsync(id);
+            var teacher = await _context.Teachers.FindAsync(id);
 
             if (teacher == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Teacher>> PostTeacher(Teacher teacher)
         {
-          if (_context.Teacher == null)
+          if (_context.Teachers == null)
           {
-              return Problem("Entity set 'DataContext.Teacher'  is null.");
+              return Problem("Entity set 'DataContext.Teachers'  is null.");
           }
-            _context.Teacher.Add(teacher);
+            _context.Teachers.Add(teacher);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTeacher", new { id = teacher.TeacherId }, teacher);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTeacher(int id)
         {
-            if (_context.Teacher == null)
+            if (_context.Teachers == null)
             {
                 return NotFound();
             }
-            var teacher = await _context.Teacher.FindAsync(id);
+            var teacher = await _context.Teachers.FindAsync(id);
             if (teacher == null)
             {
                 return NotFound();
             }
 
-            _context.Teacher.Remove(teacher);
+            _context.Teachers.Remove(teacher);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TeacherExists(int id)
         {
-            return (_context.Teacher?.Any(e => e.TeacherId == id)).GetValueOrDefault();
+            return (_context.Teachers?.Any(e => e.TeacherId == id)).GetValueOrDefault();
         }
     }
 }

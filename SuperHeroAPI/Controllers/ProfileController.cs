@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Profile
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Profile>>> GetProfile()
+        public async Task<ActionResult<IEnumerable<Profile>>> GetProfiles()
         {
-          if (_context.Profile == null)
+          if (_context.Profiles == null)
           {
               return NotFound();
           }
-            return await _context.Profile.ToListAsync();
+            return await _context.Profiles.ToListAsync();
         }
 
         // GET: api/Profile/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Profile>> GetProfile(int id)
         {
-          if (_context.Profile == null)
+          if (_context.Profiles == null)
           {
               return NotFound();
           }
-            var profile = await _context.Profile.FindAsync(id);
+            var profile = await _context.Profiles.FindAsync(id);
 
             if (profile == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Profile>> PostProfile(Profile profile)
         {
-          if (_context.Profile == null)
+          if (_context.Profiles == null)
           {
-              return Problem("Entity set 'DataContext.Profile'  is null.");
+              return Problem("Entity set 'DataContext.Profiles'  is null.");
           }
-            _context.Profile.Add(profile);
+            _context.Profiles.Add(profile);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetProfile", new { id = profile.ProfId }, profile);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteProfile(int id)
         {
-            if (_context.Profile == null)
+            if (_context.Profiles == null)
             {
                 return NotFound();
             }
-            var profile = await _context.Profile.FindAsync(id);
+            var profile = await _context.Profiles.FindAsync(id);
             if (profile == null)
             {
                 return NotFound();
             }
 
-            _context.Profile.Remove(profile);
+            _context.Profiles.Remove(profile);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool ProfileExists(int id)
         {
-            return (_context.Profile?.Any(e => e.ProfId == id)).GetValueOrDefault();
+            return (_context.Profiles?.Any(e => e.ProfId == id)).GetValueOrDefault();
         }
     }
 }

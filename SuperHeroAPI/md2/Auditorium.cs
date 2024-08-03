@@ -13,5 +13,5 @@ public partial class Auditorium
 
     public int? Count { get; set; }
 
-    public virtual ICollection<Schedule> Schedules { get; set; } = new List<Schedule>();
+    public virtual ICollection<Schedule> Schedules { get; } = new List<Schedule>();
 }

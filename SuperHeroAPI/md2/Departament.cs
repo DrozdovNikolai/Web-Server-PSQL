@@ -11,5 +11,5 @@ public partial class Departament
 
     public string? DepAbb { get; set; }
 
-    public virtual ICollection<CourseWork> CourseWorks { get; set; } = new List<CourseWork>();
+    public virtual ICollection<CourseWork> CourseWorks { get; } = new List<CourseWork>();
 }

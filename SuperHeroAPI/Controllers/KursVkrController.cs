@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/KursVkr
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<KursVkr>>> GetKursVkr()
+        public async Task<ActionResult<IEnumerable<KursVkr>>> GetKursVkrs()
         {
-          if (_context.KursVkr == null)
+          if (_context.KursVkrs == null)
           {
               return NotFound();
           }
-            return await _context.KursVkr.ToListAsync();
+            return await _context.KursVkrs.ToListAsync();
         }
 
         // GET: api/KursVkr/5
         [HttpGet("{id}")]
         public async Task<ActionResult<KursVkr>> GetKursVkr(int id)
         {
-          if (_context.KursVkr == null)
+          if (_context.KursVkrs == null)
           {
               return NotFound();
           }
-            var kursVkr = await _context.KursVkr.FindAsync(id);
+            var kursVkr = await _context.KursVkrs.FindAsync(id);
 
             if (kursVkr == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<KursVkr>> PostKursVkr(KursVkr kursVkr)
         {
-          if (_context.KursVkr == null)
+          if (_context.KursVkrs == null)
           {
-              return Problem("Entity set 'DataContext.KursVkr'  is null.");
+              return Problem("Entity set 'DataContext.KursVkrs'  is null.");
           }
-            _context.KursVkr.Add(kursVkr);
+            _context.KursVkrs.Add(kursVkr);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetKursVkr", new { id = kursVkr.Id }, kursVkr);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteKursVkr(int id)
         {
-            if (_context.KursVkr == null)
+            if (_context.KursVkrs == null)
             {
                 return NotFound();
             }
-            var kursVkr = await _context.KursVkr.FindAsync(id);
+            var kursVkr = await _context.KursVkrs.FindAsync(id);
             if (kursVkr == null)
             {
                 return NotFound();
             }
 
-            _context.KursVkr.Remove(kursVkr);
+            _context.KursVkrs.Remove(kursVkr);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool KursVkrExists(int id)
         {
-            return (_context.KursVkr?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.KursVkrs?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

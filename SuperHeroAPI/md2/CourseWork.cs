@@ -26,4 +26,6 @@ public partial class CourseWork
     public virtual Student? CourseWorkStudent { get; set; }
 
     public virtual Teacher? CourseWorkTeacher { get; set; }
+
+    public virtual ICollection<ScientificAdvisorsCourseWorkReport> Reports { get; } = new List<ScientificAdvisorsCourseWorkReport>();
 }

@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Course
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Course>>> GetCourse()
+        public async Task<ActionResult<IEnumerable<Course>>> GetCourses()
         {
-          if (_context.Course == null)
+          if (_context.Courses == null)
           {
               return NotFound();
           }
-            return await _context.Course.ToListAsync();
+            return await _context.Courses.ToListAsync();
         }
 
         // GET: api/Course/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Course>> GetCourse(int id)
         {
-          if (_context.Course == null)
+          if (_context.Courses == null)
           {
               return NotFound();
           }
-            var course = await _context.Course.FindAsync(id);
+            var course = await _context.Courses.FindAsync(id);
 
             if (course == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Course>> PostCourse(Course course)
         {
-          if (_context.Course == null)
+          if (_context.Courses == null)
           {
-              return Problem("Entity set 'DataContext.Course'  is null.");
+              return Problem("Entity set 'DataContext.Courses'  is null.");
           }
-            _context.Course.Add(course);
+            _context.Courses.Add(course);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetCourse", new { id = course.CourseId }, course);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteCourse(int id)
         {
-            if (_context.Course == null)
+            if (_context.Courses == null)
             {
                 return NotFound();
             }
-            var course = await _context.Course.FindAsync(id);
+            var course = await _context.Courses.FindAsync(id);
             if (course == null)
             {
                 return NotFound();
             }
 
-            _context.Course.Remove(course);
+            _context.Courses.Remove(course);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool CourseExists(int id)
         {
-            return (_context.Course?.Any(e => e.CourseId == id)).GetValueOrDefault();
+            return (_context.Courses?.Any(e => e.CourseId == id)).GetValueOrDefault();
         }
     }
 }

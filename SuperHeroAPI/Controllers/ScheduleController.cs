@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Schedule
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Schedule>>> GetSchedule()
+        public async Task<ActionResult<IEnumerable<Schedule>>> GetSchedules()
         {
-          if (_context.Schedule == null)
+          if (_context.Schedules == null)
           {
               return NotFound();
           }
-            return await _context.Schedule.ToListAsync();
+            return await _context.Schedules.ToListAsync();
         }
 
         // GET: api/Schedule/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Schedule>> GetSchedule(int id)
         {
-          if (_context.Schedule == null)
+          if (_context.Schedules == null)
           {
               return NotFound();
           }
-            var schedule = await _context.Schedule.FindAsync(id);
+            var schedule = await _context.Schedules.FindAsync(id);
 
             if (schedule == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Schedule>> PostSchedule(Schedule schedule)
         {
-          if (_context.Schedule == null)
+          if (_context.Schedules == null)
           {
-              return Problem("Entity set 'DataContext.Schedule'  is null.");
+              return Problem("Entity set 'DataContext.Schedules'  is null.");
           }
-            _context.Schedule.Add(schedule);
+            _context.Schedules.Add(schedule);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetSchedule", new { id = schedule.ScheduleId }, schedule);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteSchedule(int id)
         {
-            if (_context.Schedule == null)
+            if (_context.Schedules == null)
             {
                 return NotFound();
             }
-            var schedule = await _context.Schedule.FindAsync(id);
+            var schedule = await _context.Schedules.FindAsync(id);
             if (schedule == null)
             {
                 return NotFound();
             }
 
-            _context.Schedule.Remove(schedule);
+            _context.Schedules.Remove(schedule);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool ScheduleExists(int id)
         {
-            return (_context.Schedule?.Any(e => e.ScheduleId == id)).GetValueOrDefault();
+            return (_context.Schedules?.Any(e => e.ScheduleId == id)).GetValueOrDefault();
         }
     }
 }

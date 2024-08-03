@@ -9,9 +9,9 @@ public partial class Day
 
     public string? Dayofweek { get; set; }
 
-    public virtual ICollection<Schedule> Schedules { get; set; } = new List<Schedule>();
+    public virtual ICollection<Schedule> Schedules { get; } = new List<Schedule>();
 
-    public virtual ICollection<Teachschedule> Teachschedules { get; set; } = new List<Teachschedule>();
+    public virtual ICollection<Teachschedule> Teachschedules { get; } = new List<Teachschedule>();
 
-    public virtual ICollection<Tsch> Tsches { get; set; } = new List<Tsch>();
+    public virtual ICollection<Tsch> Tsches { get; } = new List<Tsch>();
 }

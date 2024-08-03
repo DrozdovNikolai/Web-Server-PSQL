@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempDistribKit
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempDistribKit>>> GetTempDistribKit()
+        public async Task<ActionResult<IEnumerable<TempDistribKit>>> GetTempDistribKits()
         {
-          if (_context.TempDistribKit == null)
+          if (_context.TempDistribKits == null)
           {
               return NotFound();
           }
-            return await _context.TempDistribKit.ToListAsync();
+            return await _context.TempDistribKits.ToListAsync();
         }
 
         // GET: api/TempDistribKit/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempDistribKit>> GetTempDistribKit(int id)
         {
-          if (_context.TempDistribKit == null)
+          if (_context.TempDistribKits == null)
           {
               return NotFound();
           }
-            var tempDistribKit = await _context.TempDistribKit.FindAsync(id);
+            var tempDistribKit = await _context.TempDistribKits.FindAsync(id);
 
             if (tempDistribKit == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempDistribKit>> PostTempDistribKit(TempDistribKit tempDistribKit)
         {
-          if (_context.TempDistribKit == null)
+          if (_context.TempDistribKits == null)
           {
-              return Problem("Entity set 'DataContext.TempDistribKit'  is null.");
+              return Problem("Entity set 'DataContext.TempDistribKits'  is null.");
           }
-            _context.TempDistribKit.Add(tempDistribKit);
+            _context.TempDistribKits.Add(tempDistribKit);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempDistribKit", new { id = tempDistribKit.Id }, tempDistribKit);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempDistribKit(int id)
         {
-            if (_context.TempDistribKit == null)
+            if (_context.TempDistribKits == null)
             {
                 return NotFound();
             }
-            var tempDistribKit = await _context.TempDistribKit.FindAsync(id);
+            var tempDistribKit = await _context.TempDistribKits.FindAsync(id);
             if (tempDistribKit == null)
             {
                 return NotFound();
             }
 
-            _context.TempDistribKit.Remove(tempDistribKit);
+            _context.TempDistribKits.Remove(tempDistribKit);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempDistribKitExists(int id)
         {
-            return (_context.TempDistribKit?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempDistribKits?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

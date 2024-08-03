@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Departament
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Departament>>> GetDepartament()
+        public async Task<ActionResult<IEnumerable<Departament>>> GetDepartaments()
         {
-          if (_context.Departament == null)
+          if (_context.Departaments == null)
           {
               return NotFound();
           }
-            return await _context.Departament.ToListAsync();
+            return await _context.Departaments.ToListAsync();
         }
 
         // GET: api/Departament/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Departament>> GetDepartament(int id)
         {
-          if (_context.Departament == null)
+          if (_context.Departaments == null)
           {
               return NotFound();
           }
-            var departament = await _context.Departament.FindAsync(id);
+            var departament = await _context.Departaments.FindAsync(id);
 
             if (departament == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Departament>> PostDepartament(Departament departament)
         {
-          if (_context.Departament == null)
+          if (_context.Departaments == null)
           {
-              return Problem("Entity set 'DataContext.Departament'  is null.");
+              return Problem("Entity set 'DataContext.Departaments'  is null.");
           }
-            _context.Departament.Add(departament);
+            _context.Departaments.Add(departament);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetDepartament", new { id = departament.DepId }, departament);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteDepartament(int id)
         {
-            if (_context.Departament == null)
+            if (_context.Departaments == null)
             {
                 return NotFound();
             }
-            var departament = await _context.Departament.FindAsync(id);
+            var departament = await _context.Departaments.FindAsync(id);
             if (departament == null)
             {
                 return NotFound();
             }
 
-            _context.Departament.Remove(departament);
+            _context.Departaments.Remove(departament);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool DepartamentExists(int id)
         {
-            return (_context.Departament?.Any(e => e.DepId == id)).GetValueOrDefault();
+            return (_context.Departaments?.Any(e => e.DepId == id)).GetValueOrDefault();
         }
     }
 }

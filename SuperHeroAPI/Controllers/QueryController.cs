@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Azure.Core;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -164,8 +165,467 @@ public class QueryController : ControllerBase
             return BadRequest(ex.Message);
         }
     }
+    // Method to create a table in PostgreSQL
+    [HttpPost("CreatePsqlTable")]
+    public async Task<IActionResult> CreatePsqlTable([FromBody] TableCreationRequest request)
+    {
+        if (string.IsNullOrEmpty(request.TableName))
+        {
+            return BadRequest("Table name is required.");
+        }
 
+        // Build the CREATE TABLE statement
+        string createTableSql = $"CREATE TABLE {request.TableName} (";
+        List<string> columnDefinitions = new List<string>();
+        foreach (var column in request.Columns)
+        {
+            // Validate column name and data type
+            if (string.IsNullOrEmpty(column.ColumnName))
+            {
+                return BadRequest("Column name is required.");
+            }
+            if (string.IsNullOrEmpty(column.DataType))
+            {
+                return BadRequest("Data type is required for column: " + column.ColumnName);
+            }
+
+            // Add column definition to the SQL statement
+            if (column.DataType.ToLower().Contains("serial"))
+            {
+                columnDefinitions.Add($"{column.ColumnName} SERIAL");
+                columnDefinitions.Add($"PRIMARY KEY ({column.ColumnName})"); // Add PRIMARY KEY constraint
+            }
+            else
+            {
+                columnDefinitions.Add($"{column.ColumnName} {column.DataType}");
+            }
+        }
+
+        createTableSql += string.Join(", ", columnDefinitions);
+        createTableSql += ")";
+
+        // Execute the SQL statement
+        try
+        {
+            await _context.Database.ExecuteSqlRawAsync(createTableSql);
+            return Ok($"Table '{request.TableName}' created successfully.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error creating table: {ex.Message}");
+        }
+    }
+    [HttpPost("CreatePsqlTable2")]
+    public async Task<IActionResult> CreatePsqlTable2([FromBody] TableCreationRequest2 request)
+    {
+        if (string.IsNullOrEmpty(request.TableName))
+        {
+            return BadRequest("Table name is required.");
+        }
+
+        // Build the CREATE TABLE statement
+        string createTableSql = $"CREATE TABLE {request.TableName} (";
+        List<string> columnDefinitions = new List<string>();
+
+        foreach (var column in request.Columns)
+        {
+            // Validate column name and data type
+            if (string.IsNullOrEmpty(column.ColumnName))
+            {
+                return BadRequest("Column name is required.");
+            }
+            if (string.IsNullOrEmpty(column.DataType))
+            {
+                return BadRequest("Data type is required for column: " + column.ColumnName);
+            }
+
+            // Add column definition to the SQL statement
+            columnDefinitions.Add($"{column.ColumnName} {column.DataType}");
+        }
+
+        createTableSql += string.Join(", ", columnDefinitions);
+        createTableSql += ")";
+
+        // Execute the SQL statement
+        try
+        {
+            await _context.Database.ExecuteSqlRawAsync(createTableSql);
+            return Ok($"Table '{request.TableName}' created successfully.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error creating table: {ex.Message}");
+        }
+    }
+
+    // Method to create stored procedures for a given table name
+    [HttpPost("CreateDynamicProcedures")]
+    public async Task<IActionResult> CreateDynamicProcedures([FromBody] string tableName)
+    {
+        if (string.IsNullOrEmpty(tableName))
+        {
+            return BadRequest("Table name is required.");
+        }
+
+        // Create procedure to insert a new record
+        string createInsertProcedureSql = $@"
+                CREATE OR REPLACE PROCEDURE Insert_{tableName}(
+                    {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
+                )
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    INSERT INTO {tableName} ({string.Join(", ", GetColumnNamesForTable2(tableName))})
+                    VALUES ({string.Join(", ", GetColumnNamesForTable2(tableName))});
+                END;
+                $$;";
+
+        // Create procedure to update a record by ID (assuming ID column is present)
+        string createUpdateProcedureSql = $@"
+                CREATE OR REPLACE PROCEDURE Update_{tableName}(
+                    {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
+                )
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    UPDATE {tableName}
+                    SET {string.Join(", ", GetColumnNamesForTable2(tableName).Select(c => $"{c} = {c}"))}
+                    WHERE Id = {GetIdColumnNameForTable2(tableName)};
+                END;
+                $$;";
+
+        // Create procedure to delete a record by ID (assuming ID column is present)
+        string createDeleteProcedureSql = $@"
+                CREATE OR REPLACE PROCEDURE Delete_{tableName}(
+                    id INTEGER
+                )
+                LANGUAGE plpgsql AS $$
+                BEGIN
+                    DELETE FROM {tableName} WHERE Id = id;
+                END;
+                $$;";
+
+        // Execute SQL statements
+        try
+        {
+            await _context.Database.ExecuteSqlRawAsync(createInsertProcedureSql);
+            await _context.Database.ExecuteSqlRawAsync(createUpdateProcedureSql);
+            await _context.Database.ExecuteSqlRawAsync(createDeleteProcedureSql);
+            return Ok($"Stored procedures for {tableName} table created successfully.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error creating stored procedures: {ex.Message}");
+        }
+    }
+
+    private List<string> GetColumnDefinitionsForTable2(string tableName)
+    {
+        // Execute a SQL query to get column definitions
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{tableName}'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        List<string> columnDefinitions = new List<string>();
+        while (reader.Read())
+        {
+            string columnName = reader.GetString(0);
+            string dataType = reader.GetString(1);
+            columnDefinitions.Add($"{columnName} {dataType}");
+        }
+
+        _context.Database.CloseConnection();
+
+        return columnDefinitions;
+    }
+
+    // Helper method to get column names for a table
+    private List<string> GetColumnNamesForTable2(string tableName)
+    {
+        // Execute a SQL query to get column names
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        List<string> columnNames = new List<string>();
+        while (reader.Read())
+        {
+            columnNames.Add(reader.GetString(0));
+        }
+
+        _context.Database.CloseConnection();
+
+        return columnNames;
+    }
+
+    // Helper method to get the ID column name for a table
+    private string GetIdColumnNameForTable2(string tableName)
+    {
+        // Execute a SQL query to get the ID column name
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}' AND column_name = 'Id'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        string idColumnName = null;
+        if (reader.Read())
+        {
+            idColumnName = reader.GetString(0);
+        }
+
+        _context.Database.CloseConnection();
+
+        return idColumnName ?? "Id"; // Default to "Id" if not found
+    }
+
+
+
+
+
+    [HttpGet("ListEntities")]
+    public IActionResult ListEntities()
+    {
+        var entityTypes = _context.Model.GetEntityTypes();
+
+   
+        List<string> entityNames = new List<string>();
+
+        
+        foreach (var entityType in entityTypes)
+        {
+            entityNames.Add(entityType.Name);
+        }
+
+      
+        return Ok(entityNames);
+    }
+     [HttpGet("ExecuteProcedure/{procedureName}")]
+        public async Task<IActionResult> ExecuteProcedureGet(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+        {
+            return await ExecuteProcedure(procedureName, parameters, "GET");
+        }
+
+    
+        [HttpPost("ExecuteProcedure/{procedureName}")]
+        public async Task<IActionResult> ExecuteProcedurePost(string procedureName, [FromBody] Dictionary<string, string> parameters)
+        {
+            return await ExecuteProcedure(procedureName, parameters, "POST");
+        }
+
+       
+        [HttpPut("ExecuteProcedure/{procedureName}")]
+        public async Task<IActionResult> ExecuteProcedurePut(string procedureName, [FromBody] Dictionary<string, string> parameters)
+        {
+            return await ExecuteProcedure(procedureName, parameters, "PUT");
+        }
+
+        
+        [HttpDelete("ExecuteProcedure/{procedureName}")]
+        public async Task<IActionResult> ExecuteProcedureDelete(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+        {
+            return await ExecuteProcedure(procedureName, parameters, "DELETE");
+        }
+
+    private async Task<IActionResult> ExecuteProcedure(string procedureName, Dictionary<string, string> parameters, string httpMethod)
+    {
+        if (string.IsNullOrEmpty(procedureName))
+        {
+            return BadRequest("Procedure name is required.");
+        }
+
+        // Get user roles
+        var userRoles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
+
+        // Check permissions based on the procedure name and user roles
+        if (!HasPermission(procedureName, userRoles)||userRoles.Count>1)
+        {
+            return Forbid(); // Or return a custom unauthorized error message
+        }
+        using var connection = _context.Database.GetDbConnection();
+        using var command = connection.CreateCommand();
+
+    
+        command.CommandType = CommandType.StoredProcedure;
+        command.CommandText = procedureName;
+
+      
+        string tableName = procedureName.Replace("insert_", "").Replace("update_", "").Replace("delete_", "");
+        var columnDefinitions = GetColumnDefinitionsForTable(tableName);
+
+
+        if (parameters != null)
+        {
+            foreach (var parameter in parameters)
+            {
+                var cmdParameter = command.CreateParameter();
+                cmdParameter.ParameterName = parameter.Key;
+
+                // Find the column definition for the parameter
+                var columnDefinition = columnDefinitions.FirstOrDefault(cd => cd.ColumnName == parameter.Key);
+                if (columnDefinition != null)
+                {
+                    cmdParameter.Value = ConvertToDbType(parameter.Value, columnDefinition.DataType);
+                    cmdParameter.DbType = columnDefinition.DbType;
+                }
+                else
+                {
+             
+                    return BadRequest($"Parameter '{parameter.Key}' not found in table '{tableName}'");
+                }
+
+                command.Parameters.Add(cmdParameter);
+            }
+        }
+
+        try
+        {
+            await connection.OpenAsync();
+            await command.ExecuteNonQueryAsync();
+            await connection.CloseAsync();
+
+  
+            return Ok($"Procedure '{procedureName}' executed successfully using {httpMethod} method.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error executing procedure '{procedureName}': {ex.Message}");
+        }
+    }
+
+    private bool HasPermission(string procedureName, List<string> userRoles)
+    {
+        var operation = GetOperationFromProcedureName(procedureName);
+
+        // Get permissions for the user's roles using a JOIN
+        var permissions = from p in _context.Permissions
+                          join r in _context.Roles on p.RoleId equals r.RoleId
+                          where userRoles.Contains(r.RoleName) &&
+                                p.TableName == GetTableNameFromProcedureName(procedureName) &&
+                                p.Operation == operation
+                          select p;
+
+        // Check if any permission matches
+        return permissions.Any();
+    }
+
+    // Helper method to get the operation from the procedure name
+    private CrudOperation GetOperationFromProcedureName(string procedureName)
+    {
+        switch (procedureName.Split('_')[0])
+        {
+            case "insert":
+                return CrudOperation.Create;
+            case "update":
+                return CrudOperation.Update;
+            case "delete":
+                return CrudOperation.Delete;
+            default: // Assume Read for other procedures
+                return CrudOperation.Read;
+        }
+    }
+
+    // Helper method to get the table name from the procedure name
+    private string GetTableNameFromProcedureName(string procedureName)
+    {
+        return procedureName.Split('_')[1];
+    }
+
+private object ConvertToDbType(string value, string postgresqlDataType)
+    {
+
+        switch (postgresqlDataType.ToLower())
+        {
+            case "integer":
+            case "serial":
+                return int.Parse(value);
+            case "varchar":
+            case "text":
+                return value;
+            case "numeric":
+                return decimal.Parse(value);
+            case "date":
+                return DateTime.Parse(value);
+            case "character varying": 
+                return value;
+
+            default:
+                throw new ArgumentException($"Unsupported data type: {postgresqlDataType}");
+        }
+    }
+
+
+    private List<ColumnDefinition> GetColumnDefinitionsForTable(string tableName)
+    {
+
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{tableName}'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        List<ColumnDefinition> columnDefinitions = new List<ColumnDefinition>();
+        while (reader.Read())
+        {
+            string columnName = reader.GetString(0);
+            string dataType = reader.GetString(1);
+            columnDefinitions.Add(new ColumnDefinition { ColumnName = columnName, DataType = dataType });
+        }
+
+        _context.Database.CloseConnection();
+
+        return columnDefinitions;
+    }
+
+    private List<string> GetColumnNamesForTable(string tableName)
+    {
+        // Execute a SQL query to get column names
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        List<string> columnNames = new List<string>();
+        while (reader.Read())
+        {
+            columnNames.Add(reader.GetString(0));
+        }
+
+        _context.Database.CloseConnection();
+
+        return columnNames;
+    }
+
+
+    private string GetIdColumnNameForTable(string tableName)
+    {
+
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}' AND column_name = 'Id'";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        string idColumnName = null;
+        if (reader.Read())
+        {
+            idColumnName = reader.GetString(0);
+        }
+
+        _context.Database.CloseConnection();
+
+        return idColumnName ?? "Id"; 
+    }
 
 }
 
-    
+

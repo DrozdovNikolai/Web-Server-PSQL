@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Tsch
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Tsch>>> GetTsch()
+        public async Task<ActionResult<IEnumerable<Tsch>>> GetTsches()
         {
-          if (_context.Tsch == null)
+          if (_context.Tsches == null)
           {
               return NotFound();
           }
-            return await _context.Tsch.ToListAsync();
+            return await _context.Tsches.ToListAsync();
         }
 
         // GET: api/Tsch/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Tsch>> GetTsch(int id)
         {
-          if (_context.Tsch == null)
+          if (_context.Tsches == null)
           {
               return NotFound();
           }
-            var tsch = await _context.Tsch.FindAsync(id);
+            var tsch = await _context.Tsches.FindAsync(id);
 
             if (tsch == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Tsch>> PostTsch(Tsch tsch)
         {
-          if (_context.Tsch == null)
+          if (_context.Tsches == null)
           {
-              return Problem("Entity set 'DataContext.Tsch'  is null.");
+              return Problem("Entity set 'DataContext.Tsches'  is null.");
           }
-            _context.Tsch.Add(tsch);
+            _context.Tsches.Add(tsch);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTsch", new { id = tsch.TId }, tsch);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTsch(int id)
         {
-            if (_context.Tsch == null)
+            if (_context.Tsches == null)
             {
                 return NotFound();
             }
-            var tsch = await _context.Tsch.FindAsync(id);
+            var tsch = await _context.Tsches.FindAsync(id);
             if (tsch == null)
             {
                 return NotFound();
             }
 
-            _context.Tsch.Remove(tsch);
+            _context.Tsches.Remove(tsch);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TschExists(int id)
         {
-            return (_context.Tsch?.Any(e => e.TId == id)).GetValueOrDefault();
+            return (_context.Tsches?.Any(e => e.TId == id)).GetValueOrDefault();
         }
     }
 }

@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempProffesion
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempProffesion>>> GetTempProffesion()
+        public async Task<ActionResult<IEnumerable<TempProffesion>>> GetTempProffesions()
         {
-          if (_context.TempProffesion == null)
+          if (_context.TempProffesions == null)
           {
               return NotFound();
           }
-            return await _context.TempProffesion.ToListAsync();
+            return await _context.TempProffesions.ToListAsync();
         }
 
         // GET: api/TempProffesion/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempProffesion>> GetTempProffesion(int id)
         {
-          if (_context.TempProffesion == null)
+          if (_context.TempProffesions == null)
           {
               return NotFound();
           }
-            var tempProffesion = await _context.TempProffesion.FindAsync(id);
+            var tempProffesion = await _context.TempProffesions.FindAsync(id);
 
             if (tempProffesion == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempProffesion>> PostTempProffesion(TempProffesion tempProffesion)
         {
-          if (_context.TempProffesion == null)
+          if (_context.TempProffesions == null)
           {
-              return Problem("Entity set 'DataContext.TempProffesion'  is null.");
+              return Problem("Entity set 'DataContext.TempProffesions'  is null.");
           }
-            _context.TempProffesion.Add(tempProffesion);
+            _context.TempProffesions.Add(tempProffesion);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempProffesion", new { id = tempProffesion.Id }, tempProffesion);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempProffesion(int id)
         {
-            if (_context.TempProffesion == null)
+            if (_context.TempProffesions == null)
             {
                 return NotFound();
             }
-            var tempProffesion = await _context.TempProffesion.FindAsync(id);
+            var tempProffesion = await _context.TempProffesions.FindAsync(id);
             if (tempProffesion == null)
             {
                 return NotFound();
             }
 
-            _context.TempProffesion.Remove(tempProffesion);
+            _context.TempProffesions.Remove(tempProffesion);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempProffesionExists(int id)
         {
-            return (_context.TempProffesion?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempProffesions?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }
