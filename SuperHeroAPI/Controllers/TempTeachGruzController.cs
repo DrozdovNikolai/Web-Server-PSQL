@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempTeachGruz
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempTeachGruz>>> GetTempTeachGruz()
+        public async Task<ActionResult<IEnumerable<TempTeachGruz>>> GetTempTeachGruzs()
         {
-          if (_context.TempTeachGruz == null)
+          if (_context.TempTeachGruzs == null)
           {
               return NotFound();
           }
-            return await _context.TempTeachGruz.ToListAsync();
+            return await _context.TempTeachGruzs.ToListAsync();
         }
 
         // GET: api/TempTeachGruz/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempTeachGruz>> GetTempTeachGruz(int id)
         {
-          if (_context.TempTeachGruz == null)
+          if (_context.TempTeachGruzs == null)
           {
               return NotFound();
           }
-            var tempTeachGruz = await _context.TempTeachGruz.FindAsync(id);
+            var tempTeachGruz = await _context.TempTeachGruzs.FindAsync(id);
 
             if (tempTeachGruz == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempTeachGruz>> PostTempTeachGruz(TempTeachGruz tempTeachGruz)
         {
-          if (_context.TempTeachGruz == null)
+          if (_context.TempTeachGruzs == null)
           {
-              return Problem("Entity set 'DataContext.TempTeachGruz'  is null.");
+              return Problem("Entity set 'DataContext.TempTeachGruzs'  is null.");
           }
-            _context.TempTeachGruz.Add(tempTeachGruz);
+            _context.TempTeachGruzs.Add(tempTeachGruz);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempTeachGruz", new { id = tempTeachGruz.Id }, tempTeachGruz);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempTeachGruz(int id)
         {
-            if (_context.TempTeachGruz == null)
+            if (_context.TempTeachGruzs == null)
             {
                 return NotFound();
             }
-            var tempTeachGruz = await _context.TempTeachGruz.FindAsync(id);
+            var tempTeachGruz = await _context.TempTeachGruzs.FindAsync(id);
             if (tempTeachGruz == null)
             {
                 return NotFound();
             }
 
-            _context.TempTeachGruz.Remove(tempTeachGruz);
+            _context.TempTeachGruzs.Remove(tempTeachGruz);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempTeachGruzExists(int id)
         {
-            return (_context.TempTeachGruz?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempTeachGruzs?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

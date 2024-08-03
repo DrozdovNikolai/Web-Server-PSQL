@@ -10,6 +10,12 @@ using Swashbuckle.AspNetCore.Filters;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json.Serialization;
+using Serilog;
+using SuperHeroAPI.Data;
+using Microsoft.AspNetCore.Identity;
+using DynamicAuthorization.Mvc.Core.Extensions;
+using DynamicAuthorization.Mvc.JsonStore.Extensions;
+using DynamicAuthorization.Mvc.Ui;
 
 
 
@@ -17,6 +23,8 @@ using System.Text.Json.Serialization;
 //var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 var builder = WebApplication.CreateBuilder(args);
 var MyAllowAllOrigins = "_myAllowAllOrigins";
+
+
 /*
 builder.Services.AddCors(options =>
 {
@@ -39,7 +47,7 @@ builder.Services.AddCors(options =>
                       });
 });
 // Add services to the container.
-
+var mvcBuilder= builder.Services.AddControllersWithViews();
 builder.Services.AddControllers();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
@@ -65,8 +73,14 @@ options.TokenValidationParameters = new TokenValidationParameters
     };
 });
 
+
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(builder.Configuration).CreateLogger();
+
+builder.Host.UseSerilog();
+
 builder.Services.AddScoped<ISuperHeroService, SuperHeroService>();
-//builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermission, PermissionService>();
 builder.Services.AddDbContext<DataContext>(options =>
@@ -75,6 +89,20 @@ builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
+
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AuditoriumsPolicy", policy =>
+        policy.RequireAssertion(context =>
+        {
+           
+            return context.User.HasClaim(claim => claim.Type == "Permission" && claim.Value == "dickandballs");
+        }));
+});
+
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -83,6 +111,10 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+//app.UseSerilogRequestLogging();
+
+//app.UseMiddleware<RequestResponseLoggingMiddleware>();
 
 app.UseHttpsRedirection();
 

@@ -19,5 +19,5 @@ public partial class Workload
 
     public virtual Teacher Teacher { get; set; } = null!;
 
-    public virtual ICollection<Teachschedule> Teachschedules { get; set; } = new List<Teachschedule>();
+    public virtual ICollection<Teachschedule> Teachschedules { get; } = new List<Teachschedule>();
 }

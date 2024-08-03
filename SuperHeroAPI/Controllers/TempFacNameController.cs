@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempFacName
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempFacName>>> GetTempFacName()
+        public async Task<ActionResult<IEnumerable<TempFacName>>> GetTempFacNames()
         {
-          if (_context.TempFacName == null)
+          if (_context.TempFacNames == null)
           {
               return NotFound();
           }
-            return await _context.TempFacName.ToListAsync();
+            return await _context.TempFacNames.ToListAsync();
         }
 
         // GET: api/TempFacName/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempFacName>> GetTempFacName(int id)
         {
-          if (_context.TempFacName == null)
+          if (_context.TempFacNames == null)
           {
               return NotFound();
           }
-            var tempFacName = await _context.TempFacName.FindAsync(id);
+            var tempFacName = await _context.TempFacNames.FindAsync(id);
 
             if (tempFacName == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempFacName>> PostTempFacName(TempFacName tempFacName)
         {
-          if (_context.TempFacName == null)
+          if (_context.TempFacNames == null)
           {
-              return Problem("Entity set 'DataContext.TempFacName'  is null.");
+              return Problem("Entity set 'DataContext.TempFacNames'  is null.");
           }
-            _context.TempFacName.Add(tempFacName);
+            _context.TempFacNames.Add(tempFacName);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempFacName", new { id = tempFacName.FacId }, tempFacName);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempFacName(int id)
         {
-            if (_context.TempFacName == null)
+            if (_context.TempFacNames == null)
             {
                 return NotFound();
             }
-            var tempFacName = await _context.TempFacName.FindAsync(id);
+            var tempFacName = await _context.TempFacNames.FindAsync(id);
             if (tempFacName == null)
             {
                 return NotFound();
             }
 
-            _context.TempFacName.Remove(tempFacName);
+            _context.TempFacNames.Remove(tempFacName);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempFacNameExists(int id)
         {
-            return (_context.TempFacName?.Any(e => e.FacId == id)).GetValueOrDefault();
+            return (_context.TempFacNames?.Any(e => e.FacId == id)).GetValueOrDefault();
         }
     }
 }

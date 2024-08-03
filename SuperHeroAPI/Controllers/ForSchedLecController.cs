@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/ForSchedLec
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<ForSchedLec>>> GetForSchedLec()
+        public async Task<ActionResult<IEnumerable<ForSchedLec>>> GetForSchedLecs()
         {
-          if (_context.ForSchedLec == null)
+          if (_context.ForSchedLecs == null)
           {
               return NotFound();
           }
-            return await _context.ForSchedLec.ToListAsync();
+            return await _context.ForSchedLecs.ToListAsync();
         }
 
         // GET: api/ForSchedLec/5
         [HttpGet("{id}")]
         public async Task<ActionResult<ForSchedLec>> GetForSchedLec(int id)
         {
-          if (_context.ForSchedLec == null)
+          if (_context.ForSchedLecs == null)
           {
               return NotFound();
           }
-            var forSchedLec = await _context.ForSchedLec.FindAsync(id);
+            var forSchedLec = await _context.ForSchedLecs.FindAsync(id);
 
             if (forSchedLec == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<ForSchedLec>> PostForSchedLec(ForSchedLec forSchedLec)
         {
-          if (_context.ForSchedLec == null)
+          if (_context.ForSchedLecs == null)
           {
-              return Problem("Entity set 'DataContext.ForSchedLec'  is null.");
+              return Problem("Entity set 'DataContext.ForSchedLecs'  is null.");
           }
-            _context.ForSchedLec.Add(forSchedLec);
+            _context.ForSchedLecs.Add(forSchedLec);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetForSchedLec", new { id = forSchedLec.Id }, forSchedLec);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteForSchedLec(int id)
         {
-            if (_context.ForSchedLec == null)
+            if (_context.ForSchedLecs == null)
             {
                 return NotFound();
             }
-            var forSchedLec = await _context.ForSchedLec.FindAsync(id);
+            var forSchedLec = await _context.ForSchedLecs.FindAsync(id);
             if (forSchedLec == null)
             {
                 return NotFound();
             }
 
-            _context.ForSchedLec.Remove(forSchedLec);
+            _context.ForSchedLecs.Remove(forSchedLec);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool ForSchedLecExists(int id)
         {
-            return (_context.ForSchedLec?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.ForSchedLecs?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

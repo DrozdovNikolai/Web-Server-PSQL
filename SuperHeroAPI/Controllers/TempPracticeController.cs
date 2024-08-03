@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempPractice
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempPractice>>> GetTempPractice()
+        public async Task<ActionResult<IEnumerable<TempPractice>>> GetTempPractices()
         {
-          if (_context.TempPractice == null)
+          if (_context.TempPractices == null)
           {
               return NotFound();
           }
-            return await _context.TempPractice.ToListAsync();
+            return await _context.TempPractices.ToListAsync();
         }
 
         // GET: api/TempPractice/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempPractice>> GetTempPractice(int id)
         {
-          if (_context.TempPractice == null)
+          if (_context.TempPractices == null)
           {
               return NotFound();
           }
-            var tempPractice = await _context.TempPractice.FindAsync(id);
+            var tempPractice = await _context.TempPractices.FindAsync(id);
 
             if (tempPractice == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempPractice>> PostTempPractice(TempPractice tempPractice)
         {
-          if (_context.TempPractice == null)
+          if (_context.TempPractices == null)
           {
-              return Problem("Entity set 'DataContext.TempPractice'  is null.");
+              return Problem("Entity set 'DataContext.TempPractices'  is null.");
           }
-            _context.TempPractice.Add(tempPractice);
+            _context.TempPractices.Add(tempPractice);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempPractice", new { id = tempPractice.Id }, tempPractice);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempPractice(int id)
         {
-            if (_context.TempPractice == null)
+            if (_context.TempPractices == null)
             {
                 return NotFound();
             }
-            var tempPractice = await _context.TempPractice.FindAsync(id);
+            var tempPractice = await _context.TempPractices.FindAsync(id);
             if (tempPractice == null)
             {
                 return NotFound();
             }
 
-            _context.TempPractice.Remove(tempPractice);
+            _context.TempPractices.Remove(tempPractice);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempPracticeExists(int id)
         {
-            return (_context.TempPractice?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempPractices?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

@@ -1220,7 +1220,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Program_u");
+                    b.ToTable("programs");
                 });
 
             modelBuilder.Entity("SuperHeroAPI.md2.Schedule", b =>

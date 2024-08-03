@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Position
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Position>>> GetPosition()
+        public async Task<ActionResult<IEnumerable<Position>>> GetPositions()
         {
-          if (_context.Position == null)
+          if (_context.Positions == null)
           {
               return NotFound();
           }
-            return await _context.Position.ToListAsync();
+            return await _context.Positions.ToListAsync();
         }
 
         // GET: api/Position/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Position>> GetPosition(int id)
         {
-          if (_context.Position == null)
+          if (_context.Positions == null)
           {
               return NotFound();
           }
-            var position = await _context.Position.FindAsync(id);
+            var position = await _context.Positions.FindAsync(id);
 
             if (position == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Position>> PostPosition(Position position)
         {
-          if (_context.Position == null)
+          if (_context.Positions == null)
           {
-              return Problem("Entity set 'DataContext.Position'  is null.");
+              return Problem("Entity set 'DataContext.Positions'  is null.");
           }
-            _context.Position.Add(position);
+            _context.Positions.Add(position);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetPosition", new { id = position.PositionId }, position);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePosition(int id)
         {
-            if (_context.Position == null)
+            if (_context.Positions == null)
             {
                 return NotFound();
             }
-            var position = await _context.Position.FindAsync(id);
+            var position = await _context.Positions.FindAsync(id);
             if (position == null)
             {
                 return NotFound();
             }
 
-            _context.Position.Remove(position);
+            _context.Positions.Remove(position);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool PositionExists(int id)
         {
-            return (_context.Position?.Any(e => e.PositionId == id)).GetValueOrDefault();
+            return (_context.Positions?.Any(e => e.PositionId == id)).GetValueOrDefault();
         }
     }
 }

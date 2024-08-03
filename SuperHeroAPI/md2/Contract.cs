@@ -28,4 +28,8 @@ public partial class Contract
     public virtual LGroup? GroupToMoveNavigation { get; set; }
 
     public virtual Listener? Listener { get; set; }
+
+    public virtual ICollection<PayGraph> PayGraphs { get; } = new List<PayGraph>();
+
+    public virtual Payer? Payer { get; set; }
 }

@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Subject
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Subject>>> GetSubject()
+        public async Task<ActionResult<IEnumerable<Subject>>> GetSubjects()
         {
-          if (_context.Subject == null)
+          if (_context.Subjects == null)
           {
               return NotFound();
           }
-            return await _context.Subject.ToListAsync();
+            return await _context.Subjects.ToListAsync();
         }
 
         // GET: api/Subject/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Subject>> GetSubject(int id)
         {
-          if (_context.Subject == null)
+          if (_context.Subjects == null)
           {
               return NotFound();
           }
-            var subject = await _context.Subject.FindAsync(id);
+            var subject = await _context.Subjects.FindAsync(id);
 
             if (subject == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Subject>> PostSubject(Subject subject)
         {
-          if (_context.Subject == null)
+          if (_context.Subjects == null)
           {
-              return Problem("Entity set 'DataContext.Subject'  is null.");
+              return Problem("Entity set 'DataContext.Subjects'  is null.");
           }
-            _context.Subject.Add(subject);
+            _context.Subjects.Add(subject);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetSubject", new { id = subject.SubjectId }, subject);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteSubject(int id)
         {
-            if (_context.Subject == null)
+            if (_context.Subjects == null)
             {
                 return NotFound();
             }
-            var subject = await _context.Subject.FindAsync(id);
+            var subject = await _context.Subjects.FindAsync(id);
             if (subject == null)
             {
                 return NotFound();
             }
 
-            _context.Subject.Remove(subject);
+            _context.Subjects.Remove(subject);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool SubjectExists(int id)
         {
-            return (_context.Subject?.Any(e => e.SubjectId == id)).GetValueOrDefault();
+            return (_context.Subjects?.Any(e => e.SubjectId == id)).GetValueOrDefault();
         }
     }
 }

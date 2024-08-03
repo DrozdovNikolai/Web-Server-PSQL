@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempSostavTest
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempSostavTest>>> GetTempSostavTest()
+        public async Task<ActionResult<IEnumerable<TempSostavTest>>> GetTempSostavTests()
         {
-          if (_context.TempSostavTest == null)
+          if (_context.TempSostavTests == null)
           {
               return NotFound();
           }
-            return await _context.TempSostavTest.ToListAsync();
+            return await _context.TempSostavTests.ToListAsync();
         }
 
         // GET: api/TempSostavTest/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempSostavTest>> GetTempSostavTest(int id)
         {
-          if (_context.TempSostavTest == null)
+          if (_context.TempSostavTests == null)
           {
               return NotFound();
           }
-            var tempSostavTest = await _context.TempSostavTest.FindAsync(id);
+            var tempSostavTest = await _context.TempSostavTests.FindAsync(id);
 
             if (tempSostavTest == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempSostavTest>> PostTempSostavTest(TempSostavTest tempSostavTest)
         {
-          if (_context.TempSostavTest == null)
+          if (_context.TempSostavTests == null)
           {
-              return Problem("Entity set 'DataContext.TempSostavTest'  is null.");
+              return Problem("Entity set 'DataContext.TempSostavTests'  is null.");
           }
-            _context.TempSostavTest.Add(tempSostavTest);
+            _context.TempSostavTests.Add(tempSostavTest);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempSostavTest", new { id = tempSostavTest.Id }, tempSostavTest);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempSostavTest(int id)
         {
-            if (_context.TempSostavTest == null)
+            if (_context.TempSostavTests == null)
             {
                 return NotFound();
             }
-            var tempSostavTest = await _context.TempSostavTest.FindAsync(id);
+            var tempSostavTest = await _context.TempSostavTests.FindAsync(id);
             if (tempSostavTest == null)
             {
                 return NotFound();
             }
 
-            _context.TempSostavTest.Remove(tempSostavTest);
+            _context.TempSostavTests.Remove(tempSostavTest);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempSostavTestExists(int id)
         {
-            return (_context.TempSostavTest?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempSostavTests?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

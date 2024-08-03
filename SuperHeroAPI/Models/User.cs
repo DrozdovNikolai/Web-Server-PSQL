@@ -6,6 +6,6 @@
         public string Username { get; set; } = string.Empty;
         public string PasswordHash { get; set; } = string.Empty;
         
-        public ICollection<Role> Roles { get; set; }
+        public virtual ICollection<UserRole> UserRoles { get; set; }
     }
 }

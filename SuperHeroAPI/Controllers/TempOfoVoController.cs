@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/TempOfoVo
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<TempOfoVo>>> GetTempOfoVo()
+        public async Task<ActionResult<IEnumerable<TempOfoVo>>> GetTempOfoVos()
         {
-          if (_context.TempOfoVo == null)
+          if (_context.TempOfoVos == null)
           {
               return NotFound();
           }
-            return await _context.TempOfoVo.ToListAsync();
+            return await _context.TempOfoVos.ToListAsync();
         }
 
         // GET: api/TempOfoVo/5
         [HttpGet("{id}")]
         public async Task<ActionResult<TempOfoVo>> GetTempOfoVo(int id)
         {
-          if (_context.TempOfoVo == null)
+          if (_context.TempOfoVos == null)
           {
               return NotFound();
           }
-            var tempOfoVo = await _context.TempOfoVo.FindAsync(id);
+            var tempOfoVo = await _context.TempOfoVos.FindAsync(id);
 
             if (tempOfoVo == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<TempOfoVo>> PostTempOfoVo(TempOfoVo tempOfoVo)
         {
-          if (_context.TempOfoVo == null)
+          if (_context.TempOfoVos == null)
           {
-              return Problem("Entity set 'DataContext.TempOfoVo'  is null.");
+              return Problem("Entity set 'DataContext.TempOfoVos'  is null.");
           }
-            _context.TempOfoVo.Add(tempOfoVo);
+            _context.TempOfoVos.Add(tempOfoVo);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTempOfoVo", new { id = tempOfoVo.Id }, tempOfoVo);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTempOfoVo(int id)
         {
-            if (_context.TempOfoVo == null)
+            if (_context.TempOfoVos == null)
             {
                 return NotFound();
             }
-            var tempOfoVo = await _context.TempOfoVo.FindAsync(id);
+            var tempOfoVo = await _context.TempOfoVos.FindAsync(id);
             if (tempOfoVo == null)
             {
                 return NotFound();
             }
 
-            _context.TempOfoVo.Remove(tempOfoVo);
+            _context.TempOfoVos.Remove(tempOfoVo);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TempOfoVoExists(int id)
         {
-            return (_context.TempOfoVo?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.TempOfoVos?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

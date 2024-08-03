@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Tegrsu
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Tegrsu>>> GetTegrsu()
+        public async Task<ActionResult<IEnumerable<Tegrsu>>> GetTegrsus()
         {
-          if (_context.Tegrsu == null)
+          if (_context.Tegrsus == null)
           {
               return NotFound();
           }
-            return await _context.Tegrsu.ToListAsync();
+            return await _context.Tegrsus.ToListAsync();
         }
 
         // GET: api/Tegrsu/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Tegrsu>> GetTegrsu(int id)
         {
-          if (_context.Tegrsu == null)
+          if (_context.Tegrsus == null)
           {
               return NotFound();
           }
-            var tegrsu = await _context.Tegrsu.FindAsync(id);
+            var tegrsu = await _context.Tegrsus.FindAsync(id);
 
             if (tegrsu == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Tegrsu>> PostTegrsu(Tegrsu tegrsu)
         {
-          if (_context.Tegrsu == null)
+          if (_context.Tegrsus == null)
           {
-              return Problem("Entity set 'DataContext.Tegrsu'  is null.");
+              return Problem("Entity set 'DataContext.Tegrsus'  is null.");
           }
-            _context.Tegrsu.Add(tegrsu);
+            _context.Tegrsus.Add(tegrsu);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTegrsu", new { id = tegrsu.TegrsuId }, tegrsu);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTegrsu(int id)
         {
-            if (_context.Tegrsu == null)
+            if (_context.Tegrsus == null)
             {
                 return NotFound();
             }
-            var tegrsu = await _context.Tegrsu.FindAsync(id);
+            var tegrsu = await _context.Tegrsus.FindAsync(id);
             if (tegrsu == null)
             {
                 return NotFound();
             }
 
-            _context.Tegrsu.Remove(tegrsu);
+            _context.Tegrsus.Remove(tegrsu);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TegrsuExists(int id)
         {
-            return (_context.Tegrsu?.Any(e => e.TegrsuId == id)).GetValueOrDefault();
+            return (_context.Tegrsus?.Any(e => e.TegrsuId == id)).GetValueOrDefault();
         }
     }
 }

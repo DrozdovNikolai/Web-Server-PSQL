@@ -21,9 +21,9 @@ public partial class Group
 
     public virtual Profile? GroupProf { get; set; }
 
-    public virtual ICollection<Schedule> Schedules { get; set; } = new List<Schedule>();
+    public virtual ICollection<Schedule> Schedules { get; } = new List<Schedule>();
 
-    public virtual ICollection<Student> Students { get; set; } = new List<Student>();
+    public virtual ICollection<Student> Students { get; } = new List<Student>();
 
-    public virtual ICollection<Workload> Workloads { get; set; } = new List<Workload>();
+    public virtual ICollection<Workload> Workloads { get; } = new List<Workload>();
 }

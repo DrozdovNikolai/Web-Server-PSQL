@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Payer
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Payer>>> GetPayer()
+        public async Task<ActionResult<IEnumerable<Payer>>> GetPayers()
         {
-          if (_context.Payer == null)
+          if (_context.Payers == null)
           {
               return NotFound();
           }
-            return await _context.Payer.ToListAsync();
+            return await _context.Payers.ToListAsync();
         }
 
         // GET: api/Payer/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Payer>> GetPayer(int id)
         {
-          if (_context.Payer == null)
+          if (_context.Payers == null)
           {
               return NotFound();
           }
-            var payer = await _context.Payer.FindAsync(id);
+            var payer = await _context.Payers.FindAsync(id);
 
             if (payer == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Payer>> PostPayer(Payer payer)
         {
-          if (_context.Payer == null)
+          if (_context.Payers == null)
           {
-              return Problem("Entity set 'DataContext.Payer'  is null.");
+              return Problem("Entity set 'DataContext.Payers'  is null.");
           }
-            _context.Payer.Add(payer);
+            _context.Payers.Add(payer);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetPayer", new { id = payer.Id }, payer);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePayer(int id)
         {
-            if (_context.Payer == null)
+            if (_context.Payers == null)
             {
                 return NotFound();
             }
-            var payer = await _context.Payer.FindAsync(id);
+            var payer = await _context.Payers.FindAsync(id);
             if (payer == null)
             {
                 return NotFound();
             }
 
-            _context.Payer.Remove(payer);
+            _context.Payers.Remove(payer);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool PayerExists(int id)
         {
-            return (_context.Payer?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.Payers?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

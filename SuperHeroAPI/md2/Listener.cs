@@ -9,8 +9,6 @@ public partial class Listener
 
     public int? PeopleCount { get; set; }
 
-    public int? PayerId { get; set; }
-
     public string? Name { get; set; }
 
     public string? Surname { get; set; }
@@ -35,5 +33,7 @@ public partial class Listener
 
     public int? GroupId { get; set; }
 
-    public virtual ICollection<Contract> Contracts { get; set; } = new List<Contract>();
+    public virtual ICollection<Contract> Contracts { get; } = new List<Contract>();
+
+    public virtual ICollection<LWishDay> LWishDays { get; } = new List<LWishDay>();
 }

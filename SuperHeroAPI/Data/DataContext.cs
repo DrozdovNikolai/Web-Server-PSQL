@@ -1,30 +1,131 @@
 global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
+using SuperHeroAPI.Models;
 
 namespace PostgreSQL.Data
 {
     public partial class DataContext : DbContext
     {
-    
-        public DataContext(DbContextOptions<DataContext> options) : base(options) 
-        { 
-        
+
+        public DataContext(DbContextOptions<DataContext> options) : base(options)
+        {
+            // this.Configuration.LazyLoadingEnabled = false;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-         //optionsBuilder.UseLazyLoadingProxies();
-            base.OnConfiguring(optionsBuilder);
+            //  optionsBuilder.UseLazyLoadingProxies(); base.OnConfiguring(optionsBuilder);
         }
 
 
-        public DbSet<SuperHero> SuperHeroes{ get; set; }
+        public virtual DbSet<Attendance> Attendances { get; set; }
 
-        public DbSet<User> Users { get; set; }
-        public DbSet<Role> Roles { get; set; }
-        public DbSet<Permission> Permissions { get; set; }
+
+
         public virtual DbSet<Auditorium> Auditoria { get; set; }
+
+        public virtual DbSet<Contract> Contracts { get; set; }
+
+        public virtual DbSet<Course> Courses { get; set; }
+
+        public virtual DbSet<CourseWork> CourseWorks { get; set; }
+
+        public virtual DbSet<Day> Days { get; set; }
+
+        public virtual DbSet<Departament> Departaments { get; set; }
+
+        public virtual DbSet<Direction> Directions { get; set; }
+
+        public virtual DbSet<Discipline> Disciplines { get; set; }
+
+        public virtual DbSet<ForSchedLec> ForSchedLecs { get; set; }
+
+        public virtual DbSet<ForSchedPrac> ForSchedPracs { get; set; }
+
+        public virtual DbSet<Grade> Grades { get; set; }
+
+        public virtual DbSet<Group> Groups { get; set; }
+
+        public virtual DbSet<Journal> Journals { get; set; }
+
+        public virtual DbSet<KursVkr> KursVkrs { get; set; }
+
+        public virtual DbSet<LGroup> LGroups { get; set; }
+
+        public virtual DbSet<LGroupsDay> LGroupsDays { get; set; }
+
+        public virtual DbSet<LWishDay> LWishDays { get; set; }
+
+        public virtual DbSet<Listener> Listeners { get; set; }
+
+        public virtual DbSet<ListenerWish> ListenerWishes { get; set; }
+
+        public virtual DbSet<PayGraph> PayGraphs { get; set; }
+
+        public virtual DbSet<Payer> Payers { get; set; }
+
+        public virtual DbSet<Permission> Permissions { get; set; }
+
+        public virtual DbSet<Position> Positions { get; set; }
+
+        public virtual DbSet<Profile> Profiles { get; set; }
+
+        public virtual DbSet<Program_u> Programs { get; set; }
+
+        public virtual DbSet<Role> Roles { get; set; }
+
+        public virtual DbSet<Schedule> Schedules { get; set; }
+
+        public virtual DbSet<ScientificAdvisorsCourseWorkReport> ScientificAdvisorsCourseWorkReports { get; set; }
+
+        public virtual DbSet<Student> Students { get; set; }
+
+        public virtual DbSet<StudentEducationFormReport> StudentEducationFormReports { get; set; }
+
+        public virtual DbSet<Subject> Subjects { get; set; }
+
+        public virtual DbSet<SuperHero> SuperHeroes { get; set; }
+
+        public virtual DbSet<TeachGruz> TeachGruzs { get; set; }
+
+        public virtual DbSet<Teacher> Teachers { get; set; }
+
+        public virtual DbSet<Teachschedule> Teachschedules { get; set; }
+
+        public virtual DbSet<Tegrsu> Tegrsus { get; set; }
+
+        public virtual DbSet<TempDepartament> TempDepartaments { get; set; }
+
+        public virtual DbSet<TempDistribKit> TempDistribKits { get; set; }
+
+        public virtual DbSet<TempFacName> TempFacNames { get; set; }
+
+        public virtual DbSet<TempItogVo> TempItogVos { get; set; }
+
+        public virtual DbSet<TempOfoVo> TempOfoVos { get; set; }
+
+        public virtual DbSet<TempPractice> TempPractices { get; set; }
+
+        public virtual DbSet<TempProffesion> TempProffesions { get; set; }
+
+        public virtual DbSet<TempSostav> TempSostavs { get; set; }
+
+        public virtual DbSet<TempSostavTest> TempSostavTests { get; set; }
+
+        public virtual DbSet<TempTaskType> TempTaskTypes { get; set; }
+
+        public virtual DbSet<TempTeachGruz> TempTeachGruzs { get; set; }
+
+        public virtual DbSet<Tsch> Tsches { get; set; }
+
+        public virtual DbSet<User> Users { get; set; }
+
+        public virtual DbSet<UserRole> UserRoles { get; set; }
+
+        public virtual DbSet<Workload> Workloads { get; set; }
+
+      
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -137,6 +238,10 @@ namespace PostgreSQL.Data
                 entity.HasOne(d => d.Listener).WithMany(p => p.Contracts)
                     .HasForeignKey(d => d.ListenerId)
                     .HasConstraintName("lr_id");
+
+                entity.HasOne(d => d.Payer).WithMany(p => p.Contracts)
+                    .HasForeignKey(d => d.PayerId)
+                    .HasConstraintName("pay_id");
             });
 
             modelBuilder.Entity<Course>(entity =>
@@ -446,6 +551,10 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.Endtime).HasColumnName("endtime");
                 entity.Property(e => e.ListenerId).HasColumnName("listener_id");
                 entity.Property(e => e.Starttime).HasColumnName("starttime");
+
+                entity.HasOne(d => d.Listener).WithMany(p => p.LWishDays)
+                    .HasForeignKey(d => d.ListenerId)
+                    .HasConstraintName("list");
             });
 
             modelBuilder.Entity<Listener>(entity =>
@@ -475,7 +584,6 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.Passport)
                     .HasMaxLength(20)
                     .HasColumnName("passport");
-                entity.Property(e => e.PayerId).HasColumnName("payer_id");
                 entity.Property(e => e.PeopleCount).HasColumnName("people_count");
                 entity.Property(e => e.PhoneNumber)
                     .HasMaxLength(15)
@@ -528,6 +636,10 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.LeftToPay)
                     .HasPrecision(10, 2)
                     .HasColumnName("left_to_pay");
+
+                entity.HasOne(d => d.Contract).WithMany(p => p.PayGraphs)
+                    .HasForeignKey(d => d.ContractId)
+                    .HasConstraintName("contract");
             });
 
             modelBuilder.Entity<Payer>(entity =>
@@ -568,7 +680,6 @@ namespace PostgreSQL.Data
                     .HasColumnName("surname");
             });
 
-
             modelBuilder.Entity<Position>(entity =>
             {
                 entity.HasKey(e => e.PositionId).HasName("positions_pkey");
@@ -598,7 +709,23 @@ namespace PostgreSQL.Data
                     .HasConstraintName("pr_dir_id");
             });
 
+            modelBuilder.Entity<Program_u>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("programs_pkey");
 
+                entity.ToTable("programs");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.EndDate).HasColumnName("end_date");
+                entity.Property(e => e.Hours).HasColumnName("hours");
+                entity.Property(e => e.ProgramName)
+                    .HasMaxLength(255)
+                    .HasColumnName("program_name");
+                entity.Property(e => e.RequiredAmount)
+                    .HasPrecision(10, 2)
+                    .HasColumnName("required_amount");
+                entity.Property(e => e.StartDate).HasColumnName("start_date");
+            });
 
             modelBuilder.Entity<Schedule>(entity =>
             {
@@ -649,6 +776,36 @@ namespace PostgreSQL.Data
                     .HasConstraintName("schedule_teacher_id_fkey");
             });
 
+            modelBuilder.Entity<ScientificAdvisorsCourseWorkReport>(entity =>
+            {
+                entity.HasKey(e => e.ReportId).HasName("scientific_advisors_course_work_report_pkey");
+
+                entity.ToTable("scientific_advisors_course_work_report");
+
+                entity.Property(e => e.ReportId).HasColumnName("report_id");
+                entity.Property(e => e.ReportContent).HasColumnName("report_content");
+                entity.Property(e => e.ReportDate).HasColumnName("report_date");
+
+                entity.HasMany(d => d.CourseWorks).WithMany(p => p.Reports)
+                    .UsingEntity<Dictionary<string, object>>(
+                        "ScientificAdvisorsCourseWorkReportCourse",
+                        r => r.HasOne<CourseWork>().WithMany()
+                            .HasForeignKey("CourseWorkId")
+                            .OnDelete(DeleteBehavior.ClientSetNull)
+                            .HasConstraintName("scientific_advisors_course_work_report_cour_course_work_id_fkey"),
+                        l => l.HasOne<ScientificAdvisorsCourseWorkReport>().WithMany()
+                            .HasForeignKey("ReportId")
+                            .OnDelete(DeleteBehavior.ClientSetNull)
+                            .HasConstraintName("scientific_advisors_course_work_report_courses_report_id_fkey"),
+                        j =>
+                        {
+                            j.HasKey("ReportId", "CourseWorkId").HasName("scientific_advisors_course_work_report_courses_pkey");
+                            j.ToTable("scientific_advisors_course_work_report_courses");
+                            j.IndexerProperty<int>("ReportId").HasColumnName("report_id");
+                            j.IndexerProperty<int>("CourseWorkId").HasColumnName("course_work_id");
+                        });
+            });
+
             modelBuilder.Entity<Student>(entity =>
             {
                 entity.HasKey(e => e.StudentId).HasName("students_pkey");
@@ -676,6 +833,7 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.Inn)
                     .HasMaxLength(20)
                     .HasColumnName("INN");
+                entity.Property(e => e.IsBudget).HasColumnName("is_budget");
                 entity.Property(e => e.LastName)
                     .HasMaxLength(255)
                     .HasColumnName("last_name");
@@ -710,6 +868,39 @@ namespace PostgreSQL.Data
                 entity.HasOne(d => d.Group).WithMany(p => p.Students)
                     .HasForeignKey(d => d.GroupId)
                     .HasConstraintName("fk_group");
+            });
+
+            modelBuilder.Entity<StudentEducationFormReport>(entity =>
+            {
+                entity.HasKey(e => e.ReportId).HasName("student_education_form_report_pkey");
+
+                entity.ToTable("student_education_form_report");
+
+                entity.Property(e => e.ReportId).HasColumnName("report_id");
+                entity.Property(e => e.EducationForm)
+                    .HasMaxLength(100)
+                    .HasColumnName("education_form");
+                entity.Property(e => e.ReportContent).HasColumnName("report_content");
+                entity.Property(e => e.ReportDate).HasColumnName("report_date");
+
+                entity.HasMany(d => d.Students).WithMany(p => p.Reports)
+                    .UsingEntity<Dictionary<string, object>>(
+                        "StudentEducationFormReportStudent",
+                        r => r.HasOne<Student>().WithMany()
+                            .HasForeignKey("StudentId")
+                            .OnDelete(DeleteBehavior.ClientSetNull)
+                            .HasConstraintName("student_education_form_report_students_student_id_fkey"),
+                        l => l.HasOne<StudentEducationFormReport>().WithMany()
+                            .HasForeignKey("ReportId")
+                            .OnDelete(DeleteBehavior.ClientSetNull)
+                            .HasConstraintName("student_education_form_report_students_report_id_fkey"),
+                        j =>
+                        {
+                            j.HasKey("ReportId", "StudentId").HasName("student_education_form_report_students_pkey");
+                            j.ToTable("student_education_form_report_students");
+                            j.IndexerProperty<int>("ReportId").HasColumnName("report_id");
+                            j.IndexerProperty<int>("StudentId").HasColumnName("student_id");
+                        });
             });
 
             modelBuilder.Entity<Subject>(entity =>
@@ -1187,7 +1378,23 @@ namespace PostgreSQL.Data
                     .HasConstraintName("tsch_teacher_id_fkey");
             });
 
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasIndex(e => e.Username, "unique_username").IsUnique();
+            });
 
+            modelBuilder.Entity<UserRole>(entity =>
+            {
+                entity.ToTable("UserRole");
+
+                entity.HasIndex(e => e.RoleId, "IX_UserRole_RoleId");
+
+                entity.HasIndex(e => e.UserId, "IX_UserRole_UserId");
+
+                entity.HasOne(d => d.Role).WithMany(p => p.UserRoles).HasForeignKey(d => d.RoleId);
+
+                entity.HasOne(d => d.User).WithMany(p => p.UserRoles).HasForeignKey(d => d.UserId);
+            });
 
             modelBuilder.Entity<Workload>(entity =>
             {
@@ -1229,96 +1436,6 @@ namespace PostgreSQL.Data
 
         partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 
-        public DbSet<SuperHeroAPI.md2.Student> Student { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Attendance> Attendance { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.AuditTableStudent> AuditTableStudent { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Contract> Contract { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Course> Course { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.CourseWork> CourseWork { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Day> Day { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Departament> Departament { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Direction> Direction { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Discipline> Discipline { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.ForSchedLec> ForSchedLec { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.ForSchedPrac> ForSchedPrac { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Grade> Grade { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Group> Group { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Journal> Journal { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.KursVkr> KursVkr { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.LGroup> LGroup { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.LGroupsDay> LGroupsDay { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Listener> Listener { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.ListenerWish> ListenerWish { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.LWishDay> LWishDay { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Payer> Payer { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.PayGraph> PayGraph { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Position> Position { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Profile> Profile { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Program_u> Program_u { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Schedule> Schedule { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Subject> Subject { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Teacher> Teacher { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TeachGruz> TeachGruz { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Teachschedule> Teachschedule { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Tegrsu> Tegrsu { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempDepartament> TempDepartament { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempDistribKit> TempDistribKit { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempFacName> TempFacName { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempItogVo> TempItogVo { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempOfoVo> TempOfoVo { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempPractice> TempPractice { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempProffesion> TempProffesion { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempSostav> TempSostav { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempSostavTest> TempSostavTest { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempTaskType> TempTaskType { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.TempTeachGruz> TempTeachGruz { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Tsch> Tsch { get; set; } = default!;
-
-        public DbSet<SuperHeroAPI.md2.Workload> Workload { get; set; } = default!;
-
+        public DbSet<SuperHeroAPI.md2.Program> Program { get; set; } = default!;
     }
-
 }

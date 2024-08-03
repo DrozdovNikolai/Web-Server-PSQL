@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -23,6 +24,7 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Auditoriums
         [HttpGet]
+        [Authorize(Policy = "AuditoriumsPolicy")]
         public async Task<ActionResult<IEnumerable<Auditorium>>> GetAuditoria()
         {
           if (_context.Auditoria == null)

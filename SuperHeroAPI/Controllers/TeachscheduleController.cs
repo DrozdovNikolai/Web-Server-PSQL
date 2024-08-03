@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Teachschedule
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Teachschedule>>> GetTeachschedule()
+        public async Task<ActionResult<IEnumerable<Teachschedule>>> GetTeachschedules()
         {
-          if (_context.Teachschedule == null)
+          if (_context.Teachschedules == null)
           {
               return NotFound();
           }
-            return await _context.Teachschedule.ToListAsync();
+            return await _context.Teachschedules.ToListAsync();
         }
 
         // GET: api/Teachschedule/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Teachschedule>> GetTeachschedule(int id)
         {
-          if (_context.Teachschedule == null)
+          if (_context.Teachschedules == null)
           {
               return NotFound();
           }
-            var teachschedule = await _context.Teachschedule.FindAsync(id);
+            var teachschedule = await _context.Teachschedules.FindAsync(id);
 
             if (teachschedule == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Teachschedule>> PostTeachschedule(Teachschedule teachschedule)
         {
-          if (_context.Teachschedule == null)
+          if (_context.Teachschedules == null)
           {
-              return Problem("Entity set 'DataContext.Teachschedule'  is null.");
+              return Problem("Entity set 'DataContext.Teachschedules'  is null.");
           }
-            _context.Teachschedule.Add(teachschedule);
+            _context.Teachschedules.Add(teachschedule);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetTeachschedule", new { id = teachschedule.LessonId }, teachschedule);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteTeachschedule(int id)
         {
-            if (_context.Teachschedule == null)
+            if (_context.Teachschedules == null)
             {
                 return NotFound();
             }
-            var teachschedule = await _context.Teachschedule.FindAsync(id);
+            var teachschedule = await _context.Teachschedules.FindAsync(id);
             if (teachschedule == null)
             {
                 return NotFound();
             }
 
-            _context.Teachschedule.Remove(teachschedule);
+            _context.Teachschedules.Remove(teachschedule);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool TeachscheduleExists(int id)
         {
-            return (_context.Teachschedule?.Any(e => e.LessonId == id)).GetValueOrDefault();
+            return (_context.Teachschedules?.Any(e => e.LessonId == id)).GetValueOrDefault();
         }
     }
 }

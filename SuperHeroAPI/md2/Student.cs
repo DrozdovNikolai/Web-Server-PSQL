@@ -47,7 +47,11 @@ public partial class Student
 
     public string? Subgroup { get; set; }
 
-    public virtual ICollection<CourseWork> CourseWorks { get; set; } = new List<CourseWork>();
+    public bool? IsBudget { get; set; }
+
+    public virtual ICollection<CourseWork> CourseWorks { get; } = new List<CourseWork>();
 
     public virtual Group? Group { get; set; }
+
+    public virtual ICollection<StudentEducationFormReport> Reports { get; } = new List<StudentEducationFormReport>();
 }

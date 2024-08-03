@@ -23,7 +23,7 @@ public partial class LGroup
 
     public int? PeopleCount { get; set; }
 
-    public virtual ICollection<Contract> Contracts { get; set; } = new List<Contract>();
+    public virtual ICollection<Contract> Contracts { get; } = new List<Contract>();
 
-    public virtual ICollection<LGroupsDay> LGroupsDays { get; set; } = new List<LGroupsDay>();
+    public virtual ICollection<LGroupsDay> LGroupsDays { get; } = new List<LGroupsDay>();
 }

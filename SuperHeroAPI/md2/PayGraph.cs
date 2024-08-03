@@ -20,4 +20,6 @@ public partial class PayGraph
     public DateOnly? Date40 { get; set; }
 
     public string? Bank { get; set; }
+
+    public virtual Contract? Contract { get; set; }
 }

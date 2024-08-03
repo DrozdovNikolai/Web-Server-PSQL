@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/LGroup
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<LGroup>>> GetLGroup()
+        public async Task<ActionResult<IEnumerable<LGroup>>> GetLGroups()
         {
-          if (_context.LGroup == null)
+          if (_context.LGroups == null)
           {
               return NotFound();
           }
-            return await _context.LGroup.ToListAsync();
+            return await _context.LGroups.ToListAsync();
         }
 
         // GET: api/LGroup/5
         [HttpGet("{id}")]
         public async Task<ActionResult<LGroup>> GetLGroup(int id)
         {
-          if (_context.LGroup == null)
+          if (_context.LGroups == null)
           {
               return NotFound();
           }
-            var lGroup = await _context.LGroup.FindAsync(id);
+            var lGroup = await _context.LGroups.FindAsync(id);
 
             if (lGroup == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<LGroup>> PostLGroup(LGroup lGroup)
         {
-          if (_context.LGroup == null)
+          if (_context.LGroups == null)
           {
-              return Problem("Entity set 'DataContext.LGroup'  is null.");
+              return Problem("Entity set 'DataContext.LGroups'  is null.");
           }
-            _context.LGroup.Add(lGroup);
+            _context.LGroups.Add(lGroup);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetLGroup", new { id = lGroup.Id }, lGroup);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteLGroup(int id)
         {
-            if (_context.LGroup == null)
+            if (_context.LGroups == null)
             {
                 return NotFound();
             }
-            var lGroup = await _context.LGroup.FindAsync(id);
+            var lGroup = await _context.LGroups.FindAsync(id);
             if (lGroup == null)
             {
                 return NotFound();
             }
 
-            _context.LGroup.Remove(lGroup);
+            _context.LGroups.Remove(lGroup);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool LGroupExists(int id)
         {
-            return (_context.LGroup?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.LGroups?.Any(e => e.Id == id)).GetValueOrDefault();
         }
     }
 }

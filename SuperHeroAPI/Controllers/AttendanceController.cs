@@ -12,55 +12,55 @@ namespace SuperHeroAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    public class ProgramController : ControllerBase
+    public class AttendanceController : ControllerBase
     {
         private readonly DataContext _context;
 
-        public ProgramController(DataContext context)
+        public AttendanceController(DataContext context)
         {
             _context = context;
         }
 
-        // GET: api/Program
+        // GET: api/Attendance
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Program_u>>> GetProgram_u()
+        public async Task<ActionResult<IEnumerable<Attendance>>> GetAttendances()
         {
-          if (_context.Program_u == null)
+          if (_context.Attendances == null)
           {
               return NotFound();
           }
-            return await _context.Program_u.ToListAsync();
+            return await _context.Attendances.ToListAsync();
         }
 
-        // GET: api/Program/5
+        // GET: api/Attendance/5
         [HttpGet("{id}")]
-        public async Task<ActionResult<Program_u>> GetProgram_u(int id)
+        public async Task<ActionResult<Attendance>> GetAttendance(int id)
         {
-          if (_context.Program_u == null)
+          if (_context.Attendances == null)
           {
               return NotFound();
           }
-            var program_u = await _context.Program_u.FindAsync(id);
+            var attendance = await _context.Attendances.FindAsync(id);
 
-            if (program_u == null)
+            if (attendance == null)
             {
                 return NotFound();
             }
 
-            return program_u;
+            return attendance;
         }
 
-        // PUT: api/Program/5
+        // PUT: api/Attendance/5
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPut("{id}")]
-        public async Task<IActionResult> PutProgram_u(int id, Program_u program_u)
+        public async Task<IActionResult> PutAttendance(int id, Attendance attendance)
         {
-            if (id != program_u.Id)
+            if (id != attendance.AttendanceId)
             {
                 return BadRequest();
             }
 
-            _context.Entry(program_u).State = EntityState.Modified;
+            _context.Entry(attendance).State = EntityState.Modified;
 
             try
             {
@@ -68,7 +68,7 @@ namespace SuperHeroAPI.Controllers
             }
             catch (DbUpdateConcurrencyException)
             {
-                if (!Program_uExists(id))
+                if (!AttendanceExists(id))
                 {
                     return NotFound();
                 }
@@ -81,44 +81,44 @@ namespace SuperHeroAPI.Controllers
             return NoContent();
         }
 
-        // POST: api/Program
+        // POST: api/Attendance
         // To protect from overposting attacks, see https://go.microsoft.com/fwlink/?linkid=2123754
         [HttpPost]
-        public async Task<ActionResult<Program_u>> PostProgram_u(Program_u program_u)
+        public async Task<ActionResult<Attendance>> PostAttendance(Attendance attendance)
         {
-          if (_context.Program_u == null)
+          if (_context.Attendances == null)
           {
-              return Problem("Entity set 'DataContext.Program_u'  is null.");
+              return Problem("Entity set 'DataContext.Attendances'  is null.");
           }
-            _context.Program_u.Add(program_u);
+            _context.Attendances.Add(attendance);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction("GetProgram_u", new { id = program_u.Id }, program_u);
+            return CreatedAtAction("GetAttendance", new { id = attendance.AttendanceId }, attendance);
         }
 
-        // DELETE: api/Program/5
+        // DELETE: api/Attendance/5
         [HttpDelete("{id}")]
-        public async Task<IActionResult> DeleteProgram_u(int id)
+        public async Task<IActionResult> DeleteAttendance(int id)
         {
-            if (_context.Program_u == null)
+            if (_context.Attendances == null)
             {
                 return NotFound();
             }
-            var program_u = await _context.Program_u.FindAsync(id);
-            if (program_u == null)
+            var attendance = await _context.Attendances.FindAsync(id);
+            if (attendance == null)
             {
                 return NotFound();
             }
 
-            _context.Program_u.Remove(program_u);
+            _context.Attendances.Remove(attendance);
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
 
-        private bool Program_uExists(int id)
+        private bool AttendanceExists(int id)
         {
-            return (_context.Program_u?.Any(e => e.Id == id)).GetValueOrDefault();
+            return (_context.Attendances?.Any(e => e.AttendanceId == id)).GetValueOrDefault();
         }
     }
 }

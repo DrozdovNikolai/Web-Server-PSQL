@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Day
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Day>>> GetDay()
+        public async Task<ActionResult<IEnumerable<Day>>> GetDays()
         {
-          if (_context.Day == null)
+          if (_context.Days == null)
           {
               return NotFound();
           }
-            return await _context.Day.ToListAsync();
+            return await _context.Days.ToListAsync();
         }
 
         // GET: api/Day/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Day>> GetDay(int id)
         {
-          if (_context.Day == null)
+          if (_context.Days == null)
           {
               return NotFound();
           }
-            var day = await _context.Day.FindAsync(id);
+            var day = await _context.Days.FindAsync(id);
 
             if (day == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Day>> PostDay(Day day)
         {
-          if (_context.Day == null)
+          if (_context.Days == null)
           {
-              return Problem("Entity set 'DataContext.Day'  is null.");
+              return Problem("Entity set 'DataContext.Days'  is null.");
           }
-            _context.Day.Add(day);
+            _context.Days.Add(day);
             try
             {
                 await _context.SaveChangesAsync();
@@ -114,17 +114,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteDay(int id)
         {
-            if (_context.Day == null)
+            if (_context.Days == null)
             {
                 return NotFound();
             }
-            var day = await _context.Day.FindAsync(id);
+            var day = await _context.Days.FindAsync(id);
             if (day == null)
             {
                 return NotFound();
             }
 
-            _context.Day.Remove(day);
+            _context.Days.Remove(day);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -132,7 +132,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool DayExists(int id)
         {
-            return (_context.Day?.Any(e => e.DayId == id)).GetValueOrDefault();
+            return (_context.Days?.Any(e => e.DayId == id)).GetValueOrDefault();
         }
     }
 }

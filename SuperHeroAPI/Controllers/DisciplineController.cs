@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Discipline
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Discipline>>> GetDiscipline()
+        public async Task<ActionResult<IEnumerable<Discipline>>> GetDisciplines()
         {
-          if (_context.Discipline == null)
+          if (_context.Disciplines == null)
           {
               return NotFound();
           }
-            return await _context.Discipline.ToListAsync();
+            return await _context.Disciplines.ToListAsync();
         }
 
         // GET: api/Discipline/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Discipline>> GetDiscipline(int id)
         {
-          if (_context.Discipline == null)
+          if (_context.Disciplines == null)
           {
               return NotFound();
           }
-            var discipline = await _context.Discipline.FindAsync(id);
+            var discipline = await _context.Disciplines.FindAsync(id);
 
             if (discipline == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Discipline>> PostDiscipline(Discipline discipline)
         {
-          if (_context.Discipline == null)
+          if (_context.Disciplines == null)
           {
-              return Problem("Entity set 'DataContext.Discipline'  is null.");
+              return Problem("Entity set 'DataContext.Disciplines'  is null.");
           }
-            _context.Discipline.Add(discipline);
+            _context.Disciplines.Add(discipline);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetDiscipline", new { id = discipline.DisciplinesId }, discipline);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteDiscipline(int id)
         {
-            if (_context.Discipline == null)
+            if (_context.Disciplines == null)
             {
                 return NotFound();
             }
-            var discipline = await _context.Discipline.FindAsync(id);
+            var discipline = await _context.Disciplines.FindAsync(id);
             if (discipline == null)
             {
                 return NotFound();
             }
 
-            _context.Discipline.Remove(discipline);
+            _context.Disciplines.Remove(discipline);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool DisciplineExists(int id)
         {
-            return (_context.Discipline?.Any(e => e.DisciplinesId == id)).GetValueOrDefault();
+            return (_context.Disciplines?.Any(e => e.DisciplinesId == id)).GetValueOrDefault();
         }
     }
 }

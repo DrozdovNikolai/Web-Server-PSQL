@@ -23,24 +23,24 @@ namespace SuperHeroAPI.Controllers
 
         // GET: api/Workload
         [HttpGet]
-        public async Task<ActionResult<IEnumerable<Workload>>> GetWorkload()
+        public async Task<ActionResult<IEnumerable<Workload>>> GetWorkloads()
         {
-          if (_context.Workload == null)
+          if (_context.Workloads == null)
           {
               return NotFound();
           }
-            return await _context.Workload.ToListAsync();
+            return await _context.Workloads.ToListAsync();
         }
 
         // GET: api/Workload/5
         [HttpGet("{id}")]
         public async Task<ActionResult<Workload>> GetWorkload(int id)
         {
-          if (_context.Workload == null)
+          if (_context.Workloads == null)
           {
               return NotFound();
           }
-            var workload = await _context.Workload.FindAsync(id);
+            var workload = await _context.Workloads.FindAsync(id);
 
             if (workload == null)
             {
@@ -86,11 +86,11 @@ namespace SuperHeroAPI.Controllers
         [HttpPost]
         public async Task<ActionResult<Workload>> PostWorkload(Workload workload)
         {
-          if (_context.Workload == null)
+          if (_context.Workloads == null)
           {
-              return Problem("Entity set 'DataContext.Workload'  is null.");
+              return Problem("Entity set 'DataContext.Workloads'  is null.");
           }
-            _context.Workload.Add(workload);
+            _context.Workloads.Add(workload);
             await _context.SaveChangesAsync();
 
             return CreatedAtAction("GetWorkload", new { id = workload.WlId }, workload);
@@ -100,17 +100,17 @@ namespace SuperHeroAPI.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeleteWorkload(int id)
         {
-            if (_context.Workload == null)
+            if (_context.Workloads == null)
             {
                 return NotFound();
             }
-            var workload = await _context.Workload.FindAsync(id);
+            var workload = await _context.Workloads.FindAsync(id);
             if (workload == null)
             {
                 return NotFound();
             }
 
-            _context.Workload.Remove(workload);
+            _context.Workloads.Remove(workload);
             await _context.SaveChangesAsync();
 
             return NoContent();
@@ -118,7 +118,7 @@ namespace SuperHeroAPI.Controllers
 
         private bool WorkloadExists(int id)
         {
-            return (_context.Workload?.Any(e => e.WlId == id)).GetValueOrDefault();
+            return (_context.Workloads?.Any(e => e.WlId == id)).GetValueOrDefault();
         }
     }
 }
