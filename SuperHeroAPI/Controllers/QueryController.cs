@@ -645,19 +645,19 @@ $$ LANGUAGE plpgsql;
         return await ExecuteProcedure($"{functionName}", parameters, "GET");
     }
 
-    [HttpPost("anyProcedure/{functionName}")]
+    [HttpPost("anyFunction/{functionName}")]
     public async Task<IActionResult> functionNamePost(string functionName, [FromBody] Dictionary<string, string> parameters)
     {
         return await RestProcedure($"{functionName}", parameters, "POST");
     }
 
-    [HttpPut("anyProcedure/{functionName}")]
+    [HttpPut("anyFunction/{functionName}")]
     public async Task<IActionResult> functionNamePut(string functionName, [FromBody] Dictionary<string, string> parameters)
     {
         return await RestProcedure($"{functionName}", parameters, "PUT");
     }
 
-    [HttpDelete("anyProcedure/{functionName}")]
+    [HttpDelete("anyFunction/{functionName}")]
     public async Task<IActionResult> functionNameDelete(string functionName, [FromQuery] Dictionary<string, string> parameters)
     {
         return await RestProcedure($"{functionName}", parameters, "DELETE");
