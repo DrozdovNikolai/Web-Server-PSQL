@@ -125,10 +125,66 @@ namespace PostgreSQL.Data
 
         public virtual DbSet<Workload> Workloads { get; set; }
 
-      
+        public virtual DbSet<TableUser> TableUsers { get; set; }
+        public virtual DbSet<TriggerUser> TriggerUsers { get; set; }
+        public virtual DbSet<ProcedureUser> ProcedureUsers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<TableUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("table_user_pkey");
+
+                entity.ToTable("table_user");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedNever()
+                    .HasColumnName("id");
+                entity.Property(e => e.Tablename)
+                    .HasColumnType("character varying")
+                    .HasColumnName("tablename");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.TableUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("table_user_fk");
+            });
+            modelBuilder.Entity<TriggerUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("trigger_user_pkey");
+
+                entity.ToTable("trigger_user");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedNever()
+                    .HasColumnName("id");
+                entity.Property(e => e.TriggerName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("trigger_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.TriggerUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("trigger_user_fk");
+            });
+            modelBuilder.Entity<ProcedureUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("procedure_user_pkey");
+
+                entity.ToTable("procedure_user");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id");
+                entity.Property(e => e.ProcedureName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("procedure_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.ProcedureUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("procedure_user_fk");
+            });
             modelBuilder.Entity<Attendance>(entity =>
             {
                 entity.HasKey(e => e.AttendanceId).HasName("attendances_pkey");
