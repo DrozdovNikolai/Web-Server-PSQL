@@ -1,13 +1,19 @@
 ﻿using Azure.Core;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
+using Npgsql;
+using SuperHeroAPI.md2;
+
 using SuperHeroAPI.Services.SuperHeroService;
 using System.Collections.Generic;
 using System.Collections.Specialized;
 using System.Data;
 using System.Data.Common;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
 
@@ -17,11 +23,13 @@ public class QueryController : ControllerBase
 {
     private readonly DataContext _context;
     private readonly IRoleService _roleService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public QueryController(DataContext context, IRoleService roleService)
+    public QueryController(DataContext context, IRoleService roleService, IHttpContextAccessor httpContextAccessor)
     {
         _context = context;
         _roleService = roleService;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     [HttpPost]
@@ -246,17 +254,50 @@ public class QueryController : ControllerBase
         createTableSql += string.Join(", ", columnDefinitions);
         createTableSql += ")";
 
-        // Execute the SQL statement
+        // Execute the CREATE TABLE statement
         try
         {
             await _context.Database.ExecuteSqlRawAsync(createTableSql);
-            return Ok($"Table '{request.TableName}' created successfully.");
         }
         catch (Exception ex)
         {
             return StatusCode(500, $"Error creating table: {ex.Message}");
         }
+
+        // Extract username from JWT token
+        string username = User.Identity.Name;
+        if (string.IsNullOrEmpty(username))
+        {
+            return Unauthorized("User is not authorized.");
+        }
+
+        // Find the user ID based on the username
+        var user = await _context.Users.SingleOrDefaultAsync(u => u.Username == username);
+        if (user == null)
+        {
+            return NotFound("User not found.");
+        }
+
+        // Add a row to the table_user table
+        var tableUser = new TableUser
+        {
+            Tablename = request.TableName,
+            UserId = user.Id
+        };
+
+        _context.TableUsers.Add(tableUser);
+
+        try
+        {
+            await _context.SaveChangesAsync();
+            return Ok($"Table '{request.TableName}' created successfully and entry added to 'table_user'.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error adding entry to table_user: {ex.Message}");
+        }
     }
+
 
     // Method to create stored procedures for a given table name
     [HttpPost("CreateDynamicProcedures")]
@@ -269,39 +310,52 @@ public class QueryController : ControllerBase
 
         // Create procedure to insert a new record
         string createInsertProcedureSql = $@"
-                CREATE OR REPLACE PROCEDURE Insert_{tableName}(
-                    {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
-                )
-                LANGUAGE plpgsql AS $$
-                BEGIN
-                    INSERT INTO {tableName} ({string.Join(", ", GetColumnNamesForTable2(tableName))})
-                    VALUES ({string.Join(", ", GetColumnNamesForTable2(tableName))});
-                END;
-                $$;";
+        CREATE OR REPLACE PROCEDURE Insert_{tableName}(
+            {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            INSERT INTO {tableName} ({string.Join(", ", GetColumnNamesForTable2(tableName))})
+            VALUES ({string.Join(", ", GetColumnNamesForTable2(tableName))});
+        END;
+        $$;";
 
         // Create procedure to update a record by ID (assuming ID column is present)
         string createUpdateProcedureSql = $@"
-                CREATE OR REPLACE PROCEDURE Update_{tableName}(
-                    {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
-                )
-                LANGUAGE plpgsql AS $$
-                BEGIN
-                    UPDATE {tableName}
-                    SET {string.Join(", ", GetColumnNamesForTable2(tableName).Select(c => $"{c} = {c}"))}
-                    WHERE Id = {GetIdColumnNameForTable2(tableName)};
-                END;
-                $$;";
+        CREATE OR REPLACE PROCEDURE Update_{tableName}(
+            {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            UPDATE {tableName}
+            SET {string.Join(", ", GetColumnNamesForTable2(tableName).Select(c => $"{c} = {c}"))}
+            WHERE Id = {GetIdColumnNameForTable2(tableName)};
+        END;
+        $$;";
 
         // Create procedure to delete a record by ID (assuming ID column is present)
         string createDeleteProcedureSql = $@"
-                CREATE OR REPLACE PROCEDURE Delete_{tableName}(
-                    id INTEGER
-                )
-                LANGUAGE plpgsql AS $$
-                BEGIN
-                    DELETE FROM {tableName} WHERE Id = id;
-                END;
-                $$;";
+        CREATE OR REPLACE PROCEDURE Delete_{tableName}(
+            id INTEGER
+        )
+        LANGUAGE plpgsql AS $$
+        BEGIN
+            DELETE FROM {tableName} WHERE Id = id;
+        END;
+        $$;";
+
+        // Create procedure to select data from the table
+
+
+        // Create procedure to select data from the table
+        string createSelectProcedureSql = $@"
+CREATE OR REPLACE FUNCTION Select_{tableName}()
+RETURNS JSON AS $$
+BEGIN
+    RETURN (SELECT json_agg(row_to_json(t)) FROM (SELECT * FROM {tableName}) t);
+END;
+$$ LANGUAGE plpgsql;
+";
 
         // Execute SQL statements
         try
@@ -309,11 +363,48 @@ public class QueryController : ControllerBase
             await _context.Database.ExecuteSqlRawAsync(createInsertProcedureSql);
             await _context.Database.ExecuteSqlRawAsync(createUpdateProcedureSql);
             await _context.Database.ExecuteSqlRawAsync(createDeleteProcedureSql);
-            return Ok($"Stored procedures for {tableName} table created successfully.");
+            await _context.Database.ExecuteSqlRawAsync(createSelectProcedureSql);
         }
         catch (Exception ex)
         {
             return StatusCode(500, $"Error creating stored procedures: {ex.Message}");
+        }
+
+        // Extract username from JWT token
+        string username = User.Identity.Name;
+        if (string.IsNullOrEmpty(username))
+        {
+            return Unauthorized("User is not authorized.");
+        }
+
+        // Find the user ID based on the username
+        var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+        if (user == null)
+        {
+            return NotFound("User not found.");
+        }
+
+        // Add a row to the procedure_user table
+        var procedureNames = new[] { "Insert", "Update", "Delete", "Select" };
+        foreach (var procedureName in procedureNames)
+        {
+            var procedureUser = new ProcedureUser
+            {
+                ProcedureName = $"{procedureName}_{tableName}",
+                UserId = user.Id
+            };
+
+            _context.ProcedureUsers.Add(procedureUser);
+        }
+
+        try
+        {
+            await _context.SaveChangesAsync();
+            return Ok($"Stored procedures for {tableName} table created successfully and entries added to 'procedure_user'.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error adding entries to procedure_user: {ex.Message}");
         }
     }
 
@@ -432,21 +523,21 @@ public class QueryController : ControllerBase
             return await ExecuteProcedure(procedureName, parameters, "DELETE");
         }
 
+
+
+
+
+
+
     private async Task<IActionResult> ExecuteProcedure(string procedureName, Dictionary<string, string> parameters, string httpMethod)
     {
         if (string.IsNullOrEmpty(procedureName))
         {
             return BadRequest("Procedure name is required.");
         }
+       
 
-        // Get user roles
-        var userRoles = User.Claims.Where(c => c.Type == ClaimTypes.Role).Select(c => c.Value).ToList();
-
-        // Check permissions based on the procedure name and user roles
-        if (!HasPermission(procedureName, userRoles)||userRoles.Count>1)
-        {
-            return Forbid(); // Or return a custom unauthorized error message
-        }
+ 
         using var connection = _context.Database.GetDbConnection();
         using var command = connection.CreateCommand();
 
@@ -497,6 +588,316 @@ public class QueryController : ControllerBase
             return StatusCode(500, $"Error executing procedure '{procedureName}': {ex.Message}");
         }
     }
+    [HttpGet("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedureGet(string tableName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await ExecuteFunction($"Select_{tableName}", parameters, "GET");
+    }
+
+    [HttpPost("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedurePost(string tableName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"Insert_{tableName}", parameters, "POST");
+    }
+
+    [HttpPut("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedurePut(string tableName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"Update_{tableName}", parameters, "PUT");
+    }
+
+    [HttpDelete("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedureDelete(string tableName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"Delete_{tableName}", parameters, "DELETE");
+    }
+
+
+
+    [HttpGet("anyProcedure/{procedureName}")]
+    public async Task<IActionResult> procedureNameGet(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await ExecuteProcedure($"{procedureName}", parameters, "GET");
+    }
+
+    [HttpPost("anyProcedure/{procedureName}")]
+    public async Task<IActionResult> procedureNamePost(string procedureName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{procedureName}", parameters, "POST");
+    }
+
+    [HttpPut("anyProcedure/{procedureName}")]
+    public async Task<IActionResult> procedureNamePut(string procedureName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{procedureName}", parameters, "PUT");
+    }
+
+    [HttpDelete("anyProcedure/{procedureName}")]
+    public async Task<IActionResult> procedureNameDelete(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{procedureName}", parameters, "DELETE");
+    }
+
+
+    [HttpGet("anyFunction/{functionName}")]
+    public async Task<IActionResult> functionNameGet(string functionName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await ExecuteProcedure($"{functionName}", parameters, "GET");
+    }
+
+    [HttpPost("anyProcedure/{functionName}")]
+    public async Task<IActionResult> functionNamePost(string functionName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{functionName}", parameters, "POST");
+    }
+
+    [HttpPut("anyProcedure/{functionName}")]
+    public async Task<IActionResult> functionNamePut(string functionName, [FromBody] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{functionName}", parameters, "PUT");
+    }
+
+    [HttpDelete("anyProcedure/{functionName}")]
+    public async Task<IActionResult> functionNameDelete(string functionName, [FromQuery] Dictionary<string, string> parameters)
+    {
+        return await RestProcedure($"{functionName}", parameters, "DELETE");
+    }
+
+    private async Task<IActionResult> RestProcedure(string procedureName, Dictionary<string, string> parameters, string httpMethod)
+    {
+        if (string.IsNullOrEmpty(procedureName))
+        {
+            return BadRequest("Procedure name is required.");
+        }
+
+        using var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        var roles = GetRolesFromJwtToken();
+
+        // If no roles are available, return an error
+        if (roles == null || roles.Count == 0)
+        {
+            return StatusCode(403, "No roles available to set.");
+        }
+
+        foreach (var role in roles)
+        {
+            using var command = connection.CreateCommand();
+            try
+            {
+                // Set the role in PostgreSQL
+                command.CommandText = $"SET ROLE {role};";
+                await command.ExecuteNonQueryAsync();
+
+                // Proceed with setting up the command to execute the stored procedure
+                bool isSelectProcedure = procedureName.StartsWith("select_", StringComparison.OrdinalIgnoreCase);
+
+                command.CommandType = CommandType.StoredProcedure;
+                command.CommandText = procedureName;
+
+                string tableName = procedureName.Replace("insert_", "").Replace("update_", "").Replace("delete_", "").Replace("select_", "");
+                var columnDefinitions = GetColumnDefinitionsForTable(tableName);
+
+                if (parameters != null)
+                {
+                    foreach (var parameter in parameters)
+                    {
+                        var cmdParameter = command.CreateParameter();
+                        cmdParameter.ParameterName = parameter.Key;
+
+                        // Find the column definition for the parameter
+                        var columnDefinition = columnDefinitions.FirstOrDefault(cd => cd.ColumnName == parameter.Key);
+                        if (columnDefinition != null)
+                        {
+                            cmdParameter.Value = ConvertToDbType(parameter.Value, columnDefinition.DataType);
+                            cmdParameter.DbType = columnDefinition.DbType;
+                        }
+                        else
+                        {
+                            return BadRequest($"Parameter '{parameter.Key}' not found in table '{tableName}'");
+                        }
+
+                        command.Parameters.Add(cmdParameter);
+                    }
+                }
+
+                // Execute the command
+                if (isSelectProcedure)
+                {
+                    using var reader = await command.ExecuteReaderAsync();
+                    var result = new List<Dictionary<string, object>>();
+                    while (await reader.ReadAsync())
+                    {
+                        var row = new Dictionary<string, object>();
+                        for (int i = 0; i < reader.FieldCount; i++)
+                        {
+                            row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                        }
+                        result.Add(row);
+                    }
+                    return Ok(result);
+                }
+                else
+                {
+                    await command.ExecuteNonQueryAsync();
+                    return Ok($"Procedure '{procedureName}' executed successfully using {httpMethod} method.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error for this role, but try the next one
+                // Optionally, you could log the role and exception message for further analysis
+            }
+            finally
+            {
+                // Ensure the connection is open before resetting the role
+                if (connection.State == ConnectionState.Open)
+                {
+                    try
+                    {
+                        command.CommandText = "RESET ROLE;";
+                        await command.ExecuteNonQueryAsync();
+                    }
+                    catch (Exception resetEx)
+                    {
+                        // Handle any exceptions during RESET ROLE, such as logging
+                    }
+                }
+            }
+        }
+
+        // If none of the roles work, return an error
+        return StatusCode(403, "None of the roles were able to execute the procedure.");
+    }
+    /*
+    private List<string> GetRolesFromJwtToken()
+    {
+        var token = _httpContextAccessor.HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var handler = new JwtSecurityTokenHandler();
+        var jwtToken = handler.ReadJwtToken(token);
+
+        var rolesClaim = jwtToken.Claims.Where(c => c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role");
+        if (rolesClaim != null)
+        {
+            return rolesClaim.Select(c => c.Value).ToList();
+        }
+
+        return new List<string>();
+    }
+    */
+
+    private List<string> GetRolesFromJwtToken()
+    {
+        // Extract the token from the Authorization header
+        var token = _httpContextAccessor.HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        var handler = new JwtSecurityTokenHandler();
+        var jwtToken = handler.ReadJwtToken(token);
+
+        // Extract the username from the token
+        var username = jwtToken.Claims.FirstOrDefault(c => c.Type == "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name")?.Value;
+
+        if (string.IsNullOrEmpty(username))
+        {
+            return new List<string>();
+        }
+
+        // Find the user in the Users table by username
+        var user = _context.Users.Include(u => u.UserRoles).ThenInclude(ur => ur.Role)
+                                  .FirstOrDefault(u => u.Username == username);
+
+        if (user == null)
+        {
+            return new List<string>();
+        }
+
+        // Retrieve the roles associated with the user
+        var roles = user.UserRoles.Select(ur => ur.Role.RoleName).ToList();
+
+        return roles;
+    }
+
+    private async Task<IActionResult> ExecuteFunction(string functionName, Dictionary<string, string> parameters, string httpMethod)
+    {
+        if (string.IsNullOrEmpty(functionName))
+        {
+            return BadRequest("Function name is required.");
+        }
+
+        using var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        var roles = GetRolesFromJwtToken();
+
+        // If no roles are available, return an error
+        if (roles == null || roles.Count == 0)
+        {
+            return StatusCode(403, "No roles available to set.");
+        }
+
+        foreach (var role in roles)
+        {
+            using var command = connection.CreateCommand();
+            try
+            {
+                // Set the role in PostgreSQL
+                command.CommandText = $"SET ROLE {role};";
+                await command.ExecuteNonQueryAsync();
+
+                // Prepare the function execution command
+                command.CommandType = CommandType.Text;
+                command.CommandText = $"SELECT {functionName}()";
+
+                if (parameters != null)
+                {
+                    foreach (var parameter in parameters)
+                    {
+                        var cmdParameter = command.CreateParameter();
+                        cmdParameter.ParameterName = parameter.Key;
+                        cmdParameter.Value = parameter.Value;
+                        command.Parameters.Add(cmdParameter);
+                    }
+                }
+
+                var result = "";
+                if (httpMethod == "GET")
+                {
+                    result = (string)await command.ExecuteScalarAsync();
+                    return Content(result, "application/json");
+                }
+                else
+                {
+                    await command.ExecuteNonQueryAsync();
+                    return Ok($"Function '{functionName}' executed successfully using {httpMethod} method.");
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error for this role, but try the next one
+                // Optionally, you could log the role and exception message for further analysis
+            }
+            finally
+            {
+                // Ensure the connection is open before resetting the role
+                if (connection.State == ConnectionState.Open)
+                {
+                    try
+                    {
+                        command.CommandText = "RESET ROLE;";
+                        await command.ExecuteNonQueryAsync();
+                    }
+                    catch (Exception resetEx)
+                    {
+                        // Handle any exceptions during RESET ROLE, such as logging
+                    }
+                }
+            }
+        }
+
+        // If none of the roles work, return an error
+        return StatusCode(403, "None of the roles were able to execute the function.");
+    }
+
 
     private bool HasPermission(string procedureName, List<string> userRoles)
     {
@@ -536,9 +937,8 @@ public class QueryController : ControllerBase
         return procedureName.Split('_')[1];
     }
 
-private object ConvertToDbType(string value, string postgresqlDataType)
+    private object ConvertToDbType(string value, string postgresqlDataType)
     {
-
         switch (postgresqlDataType.ToLower())
         {
             case "integer":
@@ -546,14 +946,14 @@ private object ConvertToDbType(string value, string postgresqlDataType)
                 return int.Parse(value);
             case "varchar":
             case "text":
+            case "character varying":
                 return value;
             case "numeric":
                 return decimal.Parse(value);
             case "date":
                 return DateTime.Parse(value);
-            case "character varying": 
-                return value;
-
+            case "boolean": // Add case for boolean
+                return bool.Parse(value);
             default:
                 throw new ArgumentException($"Unsupported data type: {postgresqlDataType}");
         }
@@ -583,49 +983,7 @@ private object ConvertToDbType(string value, string postgresqlDataType)
         return columnDefinitions;
     }
 
-    private List<string> GetColumnNamesForTable(string tableName)
-    {
-        // Execute a SQL query to get column names
-        using var command = _context.Database.GetDbConnection().CreateCommand();
-        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}'";
-        command.CommandType = CommandType.Text;
-
-        _context.Database.OpenConnection();
-        using var reader = command.ExecuteReader();
-
-        List<string> columnNames = new List<string>();
-        while (reader.Read())
-        {
-            columnNames.Add(reader.GetString(0));
-        }
-
-        _context.Database.CloseConnection();
-
-        return columnNames;
-    }
-
-
-    private string GetIdColumnNameForTable(string tableName)
-    {
-
-        using var command = _context.Database.GetDbConnection().CreateCommand();
-        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}' AND column_name = 'Id'";
-        command.CommandType = CommandType.Text;
-
-        _context.Database.OpenConnection();
-        using var reader = command.ExecuteReader();
-
-        string idColumnName = null;
-        if (reader.Read())
-        {
-            idColumnName = reader.GetString(0);
-        }
-
-        _context.Database.CloseConnection();
-
-        return idColumnName ?? "Id"; 
-    }
-
+  
 }
 
 
