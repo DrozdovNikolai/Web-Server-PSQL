@@ -1,6 +1,7 @@
 ﻿using Azure.Core;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -15,6 +16,8 @@ using System.Data;
 using System.Data.Common;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 [Route("api/[controller]")]
@@ -33,7 +36,7 @@ public class QueryController : ControllerBase
     }
 
     [HttpPost]
- 
+
     public async Task<IActionResult> Post([FromBody] QueryRequest queryRequest)
     {
         var userRole = User.FindFirstValue(ClaimTypes.Role);
@@ -74,10 +77,10 @@ public class QueryController : ControllerBase
                     // If only one row is returned, return it as a single object, not an array
                     if (result.Count == 1)
                     {
-                        
 
-                            return Ok(result[0]);
-                        
+
+                        return Ok(result[0]);
+
                     }
 
                     return Ok(result);
@@ -112,7 +115,7 @@ public class QueryController : ControllerBase
     }
 
     [HttpPut("{tableName}")]
-  
+
     public async Task<IActionResult> Put(string tableName, [FromBody] QueryRequest queryRequest)
     {
         if (queryRequest == null || string.IsNullOrEmpty(queryRequest.Query))
@@ -163,7 +166,7 @@ public class QueryController : ControllerBase
                     }
 
 
-           
+
                     return Ok(result);
                 }
             }
@@ -484,292 +487,397 @@ $$ LANGUAGE plpgsql;
     {
         var entityTypes = _context.Model.GetEntityTypes();
 
-   
+
         List<string> entityNames = new List<string>();
 
-        
+
         foreach (var entityType in entityTypes)
         {
             entityNames.Add(entityType.Name);
         }
 
-      
+
         return Ok(entityNames);
     }
-     [HttpGet("ExecuteProcedure/{procedureName}")]
-        public async Task<IActionResult> ExecuteProcedureGet(string procedureName, [FromQuery] Dictionary<string, string> parameters)
-        {
-            return await ExecuteProcedure(procedureName, parameters, "GET");
-        }
-
-    
-        [HttpPost("ExecuteProcedure/{procedureName}")]
-        public async Task<IActionResult> ExecuteProcedurePost(string procedureName, [FromBody] Dictionary<string, string> parameters)
-        {
-            return await ExecuteProcedure(procedureName, parameters, "POST");
-        }
-
-       
-        [HttpPut("ExecuteProcedure/{procedureName}")]
-        public async Task<IActionResult> ExecuteProcedurePut(string procedureName, [FromBody] Dictionary<string, string> parameters)
-        {
-            return await ExecuteProcedure(procedureName, parameters, "PUT");
-        }
-
-        
-        [HttpDelete("ExecuteProcedure/{procedureName}")]
-        public async Task<IActionResult> ExecuteProcedureDelete(string procedureName, [FromQuery] Dictionary<string, string> parameters)
-        {
-            return await ExecuteProcedure(procedureName, parameters, "DELETE");
-        }
+   
 
 
 
-
-
-
-
-    private async Task<IActionResult> ExecuteProcedure(string procedureName, Dictionary<string, string> parameters, string httpMethod)
-    {
-        if (string.IsNullOrEmpty(procedureName))
-        {
-            return BadRequest("Procedure name is required.");
-        }
-       
-
- 
-        using var connection = _context.Database.GetDbConnection();
-        using var command = connection.CreateCommand();
-
-    
-        command.CommandType = CommandType.StoredProcedure;
-        command.CommandText = procedureName;
-
-      
-        string tableName = procedureName.Replace("insert_", "").Replace("update_", "").Replace("delete_", "");
-        var columnDefinitions = GetColumnDefinitionsForTable(tableName);
-
-
-        if (parameters != null)
-        {
-            foreach (var parameter in parameters)
-            {
-                var cmdParameter = command.CreateParameter();
-                cmdParameter.ParameterName = parameter.Key;
-
-                // Find the column definition for the parameter
-                var columnDefinition = columnDefinitions.FirstOrDefault(cd => cd.ColumnName == parameter.Key);
-                if (columnDefinition != null)
-                {
-                    cmdParameter.Value = ConvertToDbType(parameter.Value, columnDefinition.DataType);
-                    cmdParameter.DbType = columnDefinition.DbType;
-                }
-                else
-                {
-             
-                    return BadRequest($"Parameter '{parameter.Key}' not found in table '{tableName}'");
-                }
-
-                command.Parameters.Add(cmdParameter);
-            }
-        }
-
-        try
-        {
-            await connection.OpenAsync();
-            await command.ExecuteNonQueryAsync();
-            await connection.CloseAsync();
-
-  
-            return Ok($"Procedure '{procedureName}' executed successfully using {httpMethod} method.");
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, $"Error executing procedure '{procedureName}': {ex.Message}");
-        }
-    }
     [HttpGet("rest/{tableName}")]
     public async Task<IActionResult> RestProcedureGet(string tableName, [FromQuery] Dictionary<string, string> parameters)
     {
-        return await ExecuteFunction($"Select_{tableName}", parameters, "GET");
+        return await ExecuteFunction($"select_{tableName}", parameters, "GET");
     }
 
-    [HttpPost("rest/{tableName}")]
-    public async Task<IActionResult> RestProcedurePost(string tableName, [FromBody] Dictionary<string, string> parameters)
-    {
-        return await RestProcedure($"Insert_{tableName}", parameters, "POST");
-    }
 
     [HttpPut("rest/{tableName}")]
-    public async Task<IActionResult> RestProcedurePut(string tableName, [FromBody] Dictionary<string, string> parameters)
+    public async Task<IActionResult> RestProcedurePut(string tableName, [FromBody] Dictionary<string, object> parameters)
     {
-        return await RestProcedure($"Update_{tableName}", parameters, "PUT");
+        return await RestProcedure($"update_{tableName}", parameters, "PUT");
     }
 
     [HttpDelete("rest/{tableName}")]
-    public async Task<IActionResult> RestProcedureDelete(string tableName, [FromQuery] Dictionary<string, string> parameters)
+    public async Task<IActionResult> RestProcedureDelete(string tableName, [FromQuery] Dictionary<string, object> parameters)
     {
-        return await RestProcedure($"Delete_{tableName}", parameters, "DELETE");
+        return await RestProcedure($"delete_{tableName}", parameters, "DELETE");
     }
 
 
 
     [HttpGet("anyProcedure/{procedureName}")]
-    public async Task<IActionResult> procedureNameGet(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+    public async Task<IActionResult> procedureNameGet(string procedureName, [FromQuery] Dictionary<string, object> parameters)
     {
-        return await ExecuteProcedure($"{procedureName}", parameters, "GET");
+        return await RestProcedure($"{procedureName}", parameters, "GET");
     }
 
     [HttpPost("anyProcedure/{procedureName}")]
-    public async Task<IActionResult> procedureNamePost(string procedureName, [FromBody] Dictionary<string, string> parameters)
+    public async Task<IActionResult> procedureNamePost(string procedureName, [FromBody] Dictionary<string, object> parameters)
     {
         return await RestProcedure($"{procedureName}", parameters, "POST");
     }
 
     [HttpPut("anyProcedure/{procedureName}")]
-    public async Task<IActionResult> procedureNamePut(string procedureName, [FromBody] Dictionary<string, string> parameters)
+    public async Task<IActionResult> procedureNamePut(string procedureName, [FromBody] Dictionary<string, object> parameters)
     {
         return await RestProcedure($"{procedureName}", parameters, "PUT");
     }
 
     [HttpDelete("anyProcedure/{procedureName}")]
-    public async Task<IActionResult> procedureNameDelete(string procedureName, [FromQuery] Dictionary<string, string> parameters)
+    public async Task<IActionResult> procedureNameDelete(string procedureName, [FromQuery] Dictionary<string, object> parameters)
     {
         return await RestProcedure($"{procedureName}", parameters, "DELETE");
     }
 
 
     [HttpGet("anyFunction/{functionName}")]
-    public async Task<IActionResult> functionNameGet(string functionName, [FromQuery] Dictionary<string, string> parameters)
+    public async Task<IActionResult> functionNameGet(string functionName, [FromQuery] Dictionary<string, object> parameters)
     {
-        return await ExecuteProcedure($"{functionName}", parameters, "GET");
+        return await ExecuteFunction2($"{functionName}", parameters, "GET");
     }
 
-    [HttpPost("anyProcedure/{functionName}")]
-    public async Task<IActionResult> functionNamePost(string functionName, [FromBody] Dictionary<string, string> parameters)
+    [HttpPost("anyFunction/{functionName}")]
+    public async Task<IActionResult> functionNamePost(string functionName, [FromBody] Dictionary<string, object> parameters)
     {
-        return await RestProcedure($"{functionName}", parameters, "POST");
+        return await ExecuteFunction2($"{functionName}", parameters, "POST");
     }
 
-    [HttpPut("anyProcedure/{functionName}")]
-    public async Task<IActionResult> functionNamePut(string functionName, [FromBody] Dictionary<string, string> parameters)
+    [HttpPut("anyFunction/{functionName}")]
+    public async Task<IActionResult> functionNamePut(string functionName, [FromBody] Dictionary<string, object> parameters)
     {
-        return await RestProcedure($"{functionName}", parameters, "PUT");
+        return await ExecuteFunction2($"{functionName}", parameters, "PUT");
     }
 
-    [HttpDelete("anyProcedure/{functionName}")]
-    public async Task<IActionResult> functionNameDelete(string functionName, [FromQuery] Dictionary<string, string> parameters)
+    [HttpDelete("anyFunction/{functionName}")]
+    public async Task<IActionResult> functionNameDelete(string functionName, [FromQuery] Dictionary<string, object> parameters)
     {
-        return await RestProcedure($"{functionName}", parameters, "DELETE");
+        return await ExecuteFunction2($"{functionName}", parameters, "DELETE");
     }
 
-    private async Task<IActionResult> RestProcedure(string procedureName, Dictionary<string, string> parameters, string httpMethod)
+    private async Task<IActionResult> RestProcedure(string procedureName, Dictionary<string, object> parameters, string method)
     {
-        if (string.IsNullOrEmpty(procedureName))
-        {
-            return BadRequest("Procedure name is required.");
-        }
-
         using var connection = _context.Database.GetDbConnection();
-        await connection.OpenAsync();
-
-        var roles = GetRolesFromJwtToken();
-
-        // If no roles are available, return an error
-        if (roles == null || roles.Count == 0)
+        try
         {
-            return StatusCode(403, "No roles available to set.");
-        }
+            await connection.OpenAsync();
 
-        foreach (var role in roles)
-        {
-            using var command = connection.CreateCommand();
-            try
+            var roles = GetRolesFromJwtToken();
+            if (roles == null || roles.Count == 0)
             {
-                // Set the role in PostgreSQL
-                command.CommandText = $"SET ROLE {role};";
-                await command.ExecuteNonQueryAsync();
+                return StatusCode(403, "No roles available to set.");
+            }
 
-                // Proceed with setting up the command to execute the stored procedure
-                bool isSelectProcedure = procedureName.StartsWith("select_", StringComparison.OrdinalIgnoreCase);
+            var parameterDefinitions = await GetProcedureParametersAsync(procedureName, connection);
+            var paramValues = new List<string>();
+            foreach (var parameterDefinition in parameterDefinitions)
+            {
+                var paramName = parameterDefinition.ParameterName;
+                var paramType = parameterDefinition.DataType;
+                var paramValue = parameters.ContainsKey(paramName) ? parameters[paramName] : null;
+                var formattedValue = FormatParameterValue(paramValue, paramType);
+                paramValues.Add(formattedValue);
+            }
 
-                command.CommandType = CommandType.StoredProcedure;
-                command.CommandText = procedureName;
+            var callStatement = $"CALL {procedureName}({string.Join(", ", paramValues)});";
 
-                string tableName = procedureName.Replace("insert_", "").Replace("update_", "").Replace("delete_", "").Replace("select_", "");
-                var columnDefinitions = GetColumnDefinitionsForTable(tableName);
-
-                if (parameters != null)
+            foreach (var role in roles)
+            {
+                try
                 {
-                    foreach (var parameter in parameters)
-                    {
-                        var cmdParameter = command.CreateParameter();
-                        cmdParameter.ParameterName = parameter.Key;
+                    using var roleCommand = connection.CreateCommand();
+                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                    await roleCommand.ExecuteNonQueryAsync();
 
-                        // Find the column definition for the parameter
-                        var columnDefinition = columnDefinitions.FirstOrDefault(cd => cd.ColumnName == parameter.Key);
-                        if (columnDefinition != null)
-                        {
-                            cmdParameter.Value = ConvertToDbType(parameter.Value, columnDefinition.DataType);
-                            cmdParameter.DbType = columnDefinition.DbType;
-                        }
-                        else
-                        {
-                            return BadRequest($"Parameter '{parameter.Key}' not found in table '{tableName}'");
-                        }
-
-                        command.Parameters.Add(cmdParameter);
-                    }
-                }
-
-                // Execute the command
-                if (isSelectProcedure)
-                {
-                    using var reader = await command.ExecuteReaderAsync();
-                    var result = new List<Dictionary<string, object>>();
-                    while (await reader.ReadAsync())
-                    {
-                        var row = new Dictionary<string, object>();
-                        for (int i = 0; i < reader.FieldCount; i++)
-                        {
-                            row[reader.GetName(i)] = reader.IsDBNull(i) ? null : reader.GetValue(i);
-                        }
-                        result.Add(row);
-                    }
-                    return Ok(result);
-                }
-                else
-                {
+                    using var command = connection.CreateCommand();
+                    command.CommandText = callStatement;
                     await command.ExecuteNonQueryAsync();
-                    return Ok($"Procedure '{procedureName}' executed successfully using {httpMethod} method.");
+
+                    // If execution is successful, return success message and break the loop
+                    return Ok($"Procedure executed successfully for role {role}.");
                 }
-            }
-            catch (Exception ex)
-            {
-                // Log the error for this role, but try the next one
-                // Optionally, you could log the role and exception message for further analysis
-            }
-            finally
-            {
-                // Ensure the connection is open before resetting the role
-                if (connection.State == ConnectionState.Open)
+                catch (Exception ex)
                 {
-                    try
-                    {
-                        command.CommandText = "RESET ROLE;";
-                        await command.ExecuteNonQueryAsync();
-                    }
-                    catch (Exception resetEx)
-                    {
-                        // Handle any exceptions during RESET ROLE, such as logging
-                    }
+                    // Log or handle exception, then continue to the next role
+                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    // The loop naturally continues here
                 }
+            }
+
+            // If no roles succeeded, return a failure message
+            return StatusCode(403, "Procedure execution failed for all roles.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error executing procedure: {ex.Message}");
+        }
+    }
+
+
+
+
+    private string FormatParameterValue(object value, string dataType)
+    {
+        if (value == null || value is DBNull)
+        {
+            return "NULL";
+        }
+
+        if (value is JsonElement jsonElement)
+        {
+            // Handle JsonElement types
+            if (jsonElement.ValueKind == JsonValueKind.String)
+            {
+                return $"'{jsonElement.GetString()}'";
+            }
+            if (jsonElement.ValueKind == JsonValueKind.Number)
+            {
+                return jsonElement.ToString(); // Directly convert numbers to string
+            }
+            if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
+            {
+                return jsonElement.GetBoolean() ? "true" : "false";
             }
         }
 
-        // If none of the roles work, return an error
-        return StatusCode(403, "None of the roles were able to execute the procedure.");
+        return dataType switch
+        {
+            "integer" => value.ToString(),
+            "boolean" => Convert.ToBoolean(value) ? "true" : "false",
+            "date" => $"'{Convert.ToDateTime(value).ToString("yyyy-MM-dd")}'",
+            "character varying" => $"'{value.ToString().Replace("'", "''")}'", // Escape single quotes in strings
+            "text" => $"'{value.ToString().Replace("'", "''")}'",
+            "numeric" => value.ToString(),
+            "double precision" => value.ToString(),
+            "timestamp without time zone" => $"'{Convert.ToDateTime(value).ToString("yyyy-MM-dd HH:mm:ss")}'",
+            _ => value.ToString() // Default case
+        };
     }
+
+
+
+
+
+
+
+
+    private async Task<List<(string ParameterName, string DataType)>> GetProcedureParametersAsync(string procedureName, DbConnection connection)
+    {
+        var parameters = new List<(string ParameterName, string DataType)>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        WITH param_info AS (
+            SELECT 
+                unnest(proargnames) AS param_name,
+                unnest(proargtypes) AS param_type_oid
+            FROM 
+                pg_proc
+            JOIN 
+                pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+            WHERE 
+                pg_proc.proname = @procedureName
+                AND pg_namespace.nspname = 'public'
+        )
+        SELECT 
+            param_name,
+            pg_catalog.format_type(param_type_oid, NULL) AS data_type
+        FROM 
+            param_info";
+        command.Parameters.Add(new NpgsqlParameter("@procedureName", procedureName));
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            parameters.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        return parameters;
+    }
+
+
+    private object ConvertParameterValue(object value, string dataType)
+    {
+        if (value == null || value is DBNull) return DBNull.Value;
+
+        // Handle JsonElement
+        if (value is JsonElement jsonElement)
+        {
+            if (jsonElement.ValueKind == JsonValueKind.String)
+            {
+                return jsonElement.GetString();
+            }
+            if (jsonElement.ValueKind == JsonValueKind.Number)
+            {
+                if (dataType.Contains("integer"))
+                    return jsonElement.GetInt32();
+                if (dataType.Contains("numeric") || dataType.Contains("double"))
+                    return jsonElement.GetDouble();
+            }
+            if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
+            {
+                return jsonElement.GetBoolean();
+            }
+            if (jsonElement.ValueKind == JsonValueKind.Object || jsonElement.ValueKind == JsonValueKind.Array)
+            {
+                return jsonElement.ToString(); // Or handle more complex cases if needed
+            }
+        }
+
+        // Convert based on data type
+        return dataType switch
+        {
+            "integer" => Convert.ToInt32(value),
+            "boolean" => Convert.ToBoolean(value),
+            "date" => Convert.ToDateTime(value),
+            "character varying" => value.ToString(),
+            "text" => value.ToString(),
+            "numeric" => Convert.ToDecimal(value),
+            "double precision" => Convert.ToDouble(value),
+            "timestamp without time zone" => DateTime.Parse(value.ToString()),
+            _ => value // Handle other types or default case
+        };
+    }
+
+
+
+
+    [HttpPost("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedurePost(string tableName, [FromBody] Dictionary<string, object> parameters)
+    {
+        string procedureName = $"insert_{tableName}";
+        return await RestProcedure(procedureName, parameters, "POST");
+    }
+
+
+
+    private async Task<IActionResult> ExecuteFunction(string functionName, Dictionary<string, object> parameters)
+    {
+        using var connection = _context.Database.GetDbConnection();
+        try
+        {
+            await connection.OpenAsync();
+
+            // Get roles from the JWT token
+            var roles = GetRolesFromJwtToken();
+
+            // If no roles are available, return an error
+            if (roles == null || roles.Count == 0)
+            {
+                return StatusCode(403, "No roles available to set.");
+            }
+
+            // Get parameter information
+            var parameterDefinitions = await GetFunctionParametersAsync(functionName, connection);
+
+            // Build the parameter values
+            var paramValues = new List<string>();
+            foreach (var parameterDefinition in parameterDefinitions)
+            {
+                var paramName = parameterDefinition.ParameterName;
+                var paramType = parameterDefinition.DataType;
+                var paramValue = parameters.ContainsKey(paramName) ? parameters[paramName] : null;
+
+                // Convert the parameter value to a string representation
+                var formattedValue = FormatParameterValue(paramValue, paramType);
+                paramValues.Add(formattedValue);
+            }
+
+            // Prepare the SELECT statement with the function call
+            var selectStatement = new StringBuilder();
+            selectStatement.Append($"SELECT {functionName}(");
+            selectStatement.Append(string.Join(", ", paramValues));
+            selectStatement.Append(") AS result;");
+
+            foreach (var role in roles)
+            {
+                try
+                {
+                    // Set the role in PostgreSQL
+                    using var roleCommand = connection.CreateCommand();
+                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                    await roleCommand.ExecuteNonQueryAsync();
+
+                    // Execute the function and get the JSON result
+                    using var command = connection.CreateCommand();
+                    command.CommandText = selectStatement.ToString();
+                    var result = await command.ExecuteScalarAsync();
+
+                    // Assuming the function returns a JSON string, cast the result to string
+                    var jsonResult = result?.ToString();
+
+                    // Return the result directly as JSON content
+                    return Content(jsonResult, "application/json");
+                }
+                catch (Exception ex)
+                {
+                    // Log or handle exception, then continue to the next role
+                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    // The loop naturally continues here
+                }
+            }
+
+            // If no roles succeeded, return a failure message
+            return StatusCode(403, "Function execution failed for all roles.");
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, $"Error executing function: {ex.Message}");
+        }
+    }
+
+    private async Task<List<(string ParameterName, string DataType)>> GetFunctionParametersAsync(string functionName, DbConnection connection)
+    {
+        var parameters = new List<(string ParameterName, string DataType)>();
+
+        using var command = connection.CreateCommand();
+        command.CommandText = @"
+        WITH param_info AS (
+            SELECT 
+                unnest(proargnames) AS param_name,
+                unnest(proargtypes) AS param_type_oid
+            FROM 
+                pg_proc
+            JOIN 
+                pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+            WHERE 
+                pg_proc.proname = @functionName
+                AND pg_namespace.nspname = 'public'
+        )
+        SELECT 
+            param_name,
+            pg_catalog.format_type(param_type_oid, NULL) AS data_type
+        FROM 
+            param_info";
+        command.Parameters.Add(new NpgsqlParameter("@functionName", functionName));
+
+        using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            parameters.Add((reader.GetString(0), reader.GetString(1)));
+        }
+
+        return parameters;
+    }
+
     /*
     private List<string> GetRolesFromJwtToken()
     {
@@ -983,7 +1091,7 @@ $$ LANGUAGE plpgsql;
         return columnDefinitions;
     }
 
-  
+
 }
 
 
