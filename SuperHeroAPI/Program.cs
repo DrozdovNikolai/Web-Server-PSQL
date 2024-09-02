@@ -105,7 +105,8 @@ builder.Services.AddAuthorization(options =>
 
 
 var app = builder.Build();
-
+app.UsePathBase("/server");
+app.UseRouting();
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
