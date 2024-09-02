@@ -301,8 +301,6 @@ public class QueryController : ControllerBase
         }
     }
 
-
-    // Method to create stored procedures for a given table name
     [HttpPost("CreateDynamicProcedures")]
     public async Task<IActionResult> CreateDynamicProcedures([FromBody] string tableName)
     {
@@ -311,54 +309,62 @@ public class QueryController : ControllerBase
             return BadRequest("Table name is required.");
         }
 
-        // Create procedure to insert a new record
+        // Detect the primary key column
+        string primaryKeyColumn = GetPrimaryKeyColumnName(tableName);
+        if (string.IsNullOrEmpty(primaryKeyColumn))
+        {
+            return BadRequest("Primary key column could not be determined.");
+        }
+
+        // Create procedure to insert a new record (excluding primary key)
+        var columnDefinitions = GetColumnDefinitionsForTable2(tableName)
+            .Where(col => !col.StartsWith(primaryKeyColumn + " ")).ToList();
+        var columnNames = GetColumnNamesForTable2(tableName)
+            .Where(col => col != primaryKeyColumn).ToList();
+
         string createInsertProcedureSql = $@"
-        CREATE OR REPLACE PROCEDURE Insert_{tableName}(
-            {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
-        )
-        LANGUAGE plpgsql AS $$
-        BEGIN
-            INSERT INTO {tableName} ({string.Join(", ", GetColumnNamesForTable2(tableName))})
-            VALUES ({string.Join(", ", GetColumnNamesForTable2(tableName))});
-        END;
-        $$;";
+    CREATE OR REPLACE PROCEDURE Insert_{tableName}(
+        {string.Join(", ", columnDefinitions)}
+    )
+    LANGUAGE plpgsql AS $$
+    BEGIN
+        INSERT INTO {tableName} ({string.Join(", ", columnNames)})
+        VALUES ({string.Join(", ", columnNames)});
+    END;
+    $$;";
 
-        // Create procedure to update a record by ID (assuming ID column is present)
+        // Create procedure to update a record by primary key (using p_ prefix for parameters)
         string createUpdateProcedureSql = $@"
-        CREATE OR REPLACE PROCEDURE Update_{tableName}(
-            {string.Join(", ", GetColumnDefinitionsForTable2(tableName))}
-        )
-        LANGUAGE plpgsql AS $$
-        BEGIN
-            UPDATE {tableName}
-            SET {string.Join(", ", GetColumnNamesForTable2(tableName).Select(c => $"{c} = {c}"))}
-            WHERE Id = {GetIdColumnNameForTable2(tableName)};
-        END;
-        $$;";
+    CREATE OR REPLACE PROCEDURE Update_{tableName}(
+        {string.Join(", ", columnDefinitions.Select(c => "p_" + c))}
+    )
+    LANGUAGE plpgsql AS $$
+    BEGIN
+        UPDATE {tableName}
+        SET {string.Join(", ", columnNames.Select(c => $"{c} = p_{c}"))}
+        WHERE {primaryKeyColumn} = p_{primaryKeyColumn};
+    END;
+    $$;";
 
-        // Create procedure to delete a record by ID (assuming ID column is present)
+        // Create procedure to "delete" a record by primary key (set deleted_at to current timestamp)
         string createDeleteProcedureSql = $@"
-        CREATE OR REPLACE PROCEDURE Delete_{tableName}(
-            id INTEGER
-        )
-        LANGUAGE plpgsql AS $$
-        BEGIN
-            DELETE FROM {tableName} WHERE Id = id;
-        END;
-        $$;";
-
-        // Create procedure to select data from the table
-
+    CREATE OR REPLACE PROCEDURE Delete_{tableName}(
+        p_{primaryKeyColumn} INTEGER
+    )
+    LANGUAGE plpgsql AS $$
+    BEGIN
+        UPDATE {tableName} SET deleted_at = now() WHERE {primaryKeyColumn} = p_{primaryKeyColumn};
+    END;
+    $$;";
 
         // Create procedure to select data from the table
         string createSelectProcedureSql = $@"
-CREATE OR REPLACE FUNCTION Select_{tableName}()
-RETURNS JSON AS $$
-BEGIN
-    RETURN (SELECT json_agg(row_to_json(t)) FROM (SELECT * FROM {tableName}) t);
-END;
-$$ LANGUAGE plpgsql;
-";
+    CREATE OR REPLACE FUNCTION Select_{tableName}()
+    RETURNS JSON AS $$
+    BEGIN
+        RETURN (SELECT json_agg(row_to_json(t)) FROM (SELECT * FROM {tableName}) t);
+    END;
+    $$ LANGUAGE plpgsql;";
 
         // Execute SQL statements
         try
@@ -411,9 +417,35 @@ $$ LANGUAGE plpgsql;
         }
     }
 
+    private string GetPrimaryKeyColumnName(string tableName)
+    {
+        // Execute a SQL query to get the primary key column name
+        using var command = _context.Database.GetDbConnection().CreateCommand();
+        command.CommandText = $@"
+        SELECT a.attname
+        FROM pg_index i
+        JOIN pg_attribute a ON a.attnum = ANY(i.indkey)
+        WHERE i.indrelid = '{tableName}'::regclass
+        AND i.indisprimary;
+    ";
+        command.CommandType = CommandType.Text;
+
+        _context.Database.OpenConnection();
+        using var reader = command.ExecuteReader();
+
+        string primaryKeyColumn = null;
+        if (reader.Read())
+        {
+            primaryKeyColumn = reader.GetString(0);
+        }
+
+        _context.Database.CloseConnection();
+
+        return primaryKeyColumn;
+    }
+
     private List<string> GetColumnDefinitionsForTable2(string tableName)
     {
-        // Execute a SQL query to get column definitions
         using var command = _context.Database.GetDbConnection().CreateCommand();
         command.CommandText = $"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{tableName}'";
         command.CommandType = CommandType.Text;
@@ -434,10 +466,8 @@ $$ LANGUAGE plpgsql;
         return columnDefinitions;
     }
 
-    // Helper method to get column names for a table
     private List<string> GetColumnNamesForTable2(string tableName)
     {
-        // Execute a SQL query to get column names
         using var command = _context.Database.GetDbConnection().CreateCommand();
         command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}'";
         command.CommandType = CommandType.Text;
@@ -456,27 +486,6 @@ $$ LANGUAGE plpgsql;
         return columnNames;
     }
 
-    // Helper method to get the ID column name for a table
-    private string GetIdColumnNameForTable2(string tableName)
-    {
-        // Execute a SQL query to get the ID column name
-        using var command = _context.Database.GetDbConnection().CreateCommand();
-        command.CommandText = $"SELECT column_name FROM information_schema.columns WHERE table_name = '{tableName}' AND column_name = 'Id'";
-        command.CommandType = CommandType.Text;
-
-        _context.Database.OpenConnection();
-        using var reader = command.ExecuteReader();
-
-        string idColumnName = null;
-        if (reader.Read())
-        {
-            idColumnName = reader.GetString(0);
-        }
-
-        _context.Database.CloseConnection();
-
-        return idColumnName ?? "Id"; // Default to "Id" if not found
-    }
 
 
 
@@ -509,7 +518,12 @@ $$ LANGUAGE plpgsql;
         return await ExecuteFunction($"select_{tableName}", parameters, "GET");
     }
 
-
+    [HttpPost("rest/{tableName}")]
+    public async Task<IActionResult> RestProcedurePost(string tableName, [FromBody] Dictionary<string, object> parameters)
+    {
+        string procedureName = $"insert_{tableName}";
+        return await RestProcedure(procedureName, parameters, "POST");
+    }
     [HttpPut("rest/{tableName}")]
     public async Task<IActionResult> RestProcedurePut(string tableName, [FromBody] Dictionary<string, object> parameters)
     {
@@ -583,7 +597,7 @@ $$ LANGUAGE plpgsql;
             var roles = GetRolesFromJwtToken();
             if (roles == null || roles.Count == 0)
             {
-                return StatusCode(403, "No roles available to set.");
+                return StatusCode(403, new { message = "No roles available to set." });
             }
 
             var parameterDefinitions = await GetProcedureParametersAsync(procedureName, connection);
@@ -592,6 +606,7 @@ $$ LANGUAGE plpgsql;
             {
                 var paramName = parameterDefinition.ParameterName;
                 var paramType = parameterDefinition.DataType;
+                Console.WriteLine(parameters);
                 var paramValue = parameters.ContainsKey(paramName) ? parameters[paramName] : null;
                 var formattedValue = FormatParameterValue(paramValue, paramType);
                 paramValues.Add(formattedValue);
@@ -611,8 +626,13 @@ $$ LANGUAGE plpgsql;
                     command.CommandText = callStatement;
                     await command.ExecuteNonQueryAsync();
 
-                    // If execution is successful, return success message and break the loop
-                    return Ok($"Procedure executed successfully for role {role}.");
+                    // Return a JSON object with success message and role
+                    return Ok(new
+                    {
+                        success = true,
+                        message = $"Procedure executed successfully for role {role}.",
+                        role = role
+                    });
                 }
                 catch (Exception ex)
                 {
@@ -622,14 +642,26 @@ $$ LANGUAGE plpgsql;
                 }
             }
 
-            // If no roles succeeded, return a failure message
-            return StatusCode(403, "Procedure execution failed for all roles.");
+            // If no roles succeeded, return a JSON failure message
+            return StatusCode(403, new
+            {
+                success = false,
+                message = "Procedure execution failed for all roles.",
+                rolesTried = roles
+            });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Error executing procedure: {ex.Message}");
+            // Return a JSON object with error details
+            return StatusCode(500, new
+            {
+                success = false,
+                message = "Error executing procedure.",
+                error = ex.Message
+            });
         }
     }
+
 
 
 
@@ -685,33 +717,43 @@ $$ LANGUAGE plpgsql;
 
         using var command = connection.CreateCommand();
         command.CommandText = @"
-        WITH param_info AS (
-            SELECT 
-                unnest(proargnames) AS param_name,
-                unnest(proargtypes) AS param_type_oid
-            FROM 
-                pg_proc
-            JOIN 
-                pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
-            WHERE 
-                pg_proc.proname = @procedureName
-                AND pg_namespace.nspname = 'public'
-        )
+    WITH param_info AS (
         SELECT 
-            param_name,
-            pg_catalog.format_type(param_type_oid, NULL) AS data_type
+            unnest(proargnames) AS param_name,
+            unnest(proargtypes) AS param_type_oid
         FROM 
-            param_info";
+            pg_proc
+        JOIN 
+            pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+        WHERE 
+            pg_proc.proname = @procedureName
+            AND pg_namespace.nspname = 'public'
+    )
+    SELECT 
+        param_name,
+        pg_catalog.format_type(param_type_oid, NULL) AS data_type
+    FROM 
+        param_info";
         command.Parameters.Add(new NpgsqlParameter("@procedureName", procedureName));
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            parameters.Add((reader.GetString(0), reader.GetString(1)));
+            var paramName = reader.GetString(0);
+            var dataType = reader.GetString(1);
+
+            // Remove 'p_' prefix if present
+            if (paramName.StartsWith("p_"))
+            {
+                paramName = paramName.Substring(2); // Remove the first two characters
+            }
+
+            parameters.Add((paramName, dataType));
         }
 
         return parameters;
     }
+
 
 
     private object ConvertParameterValue(object value, string dataType)
@@ -760,16 +802,11 @@ $$ LANGUAGE plpgsql;
 
 
 
-    [HttpPost("rest/{tableName}")]
-    public async Task<IActionResult> RestProcedurePost(string tableName, [FromBody] Dictionary<string, object> parameters)
-    {
-        string procedureName = $"insert_{tableName}";
-        return await RestProcedure(procedureName, parameters, "POST");
-    }
 
 
 
-    private async Task<IActionResult> ExecuteFunction(string functionName, Dictionary<string, object> parameters)
+
+    private async Task<IActionResult> ExecuteFunction2(string functionName, Dictionary<string, object> parameters, string method)
     {
         using var connection = _context.Database.GetDbConnection();
         try
@@ -779,10 +816,10 @@ $$ LANGUAGE plpgsql;
             // Get roles from the JWT token
             var roles = GetRolesFromJwtToken();
 
-            // If no roles are available, return an error
+            // If no roles are available, return an error in JSON format
             if (roles == null || roles.Count == 0)
             {
-                return StatusCode(403, "No roles available to set.");
+                return StatusCode(403, new { success = false, message = "No roles available to set." });
             }
 
             // Get parameter information
@@ -835,14 +872,26 @@ $$ LANGUAGE plpgsql;
                 }
             }
 
-            // If no roles succeeded, return a failure message
-            return StatusCode(403, "Function execution failed for all roles.");
+            // If no roles succeeded, return a JSON failure message
+            return StatusCode(403, new
+            {
+                success = false,
+                message = "Function execution failed for all roles.",
+                rolesTried = roles
+            });
         }
         catch (Exception ex)
         {
-            return StatusCode(500, $"Error executing function: {ex.Message}");
+            // Return a JSON object with error details
+            return StatusCode(500, new
+            {
+                success = false,
+                message = "Error executing function.",
+                error = ex.Message
+            });
         }
     }
+
 
     private async Task<List<(string ParameterName, string DataType)>> GetFunctionParametersAsync(string functionName, DbConnection connection)
     {
@@ -850,33 +899,43 @@ $$ LANGUAGE plpgsql;
 
         using var command = connection.CreateCommand();
         command.CommandText = @"
-        WITH param_info AS (
-            SELECT 
-                unnest(proargnames) AS param_name,
-                unnest(proargtypes) AS param_type_oid
-            FROM 
-                pg_proc
-            JOIN 
-                pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
-            WHERE 
-                pg_proc.proname = @functionName
-                AND pg_namespace.nspname = 'public'
-        )
+    WITH param_info AS (
         SELECT 
-            param_name,
-            pg_catalog.format_type(param_type_oid, NULL) AS data_type
+            unnest(proargnames) AS param_name,
+            unnest(proargtypes) AS param_type_oid
         FROM 
-            param_info";
+            pg_proc
+        JOIN 
+            pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+        WHERE 
+            pg_proc.proname = @functionName
+            AND pg_namespace.nspname = 'public'
+    )
+    SELECT 
+        param_name,
+        pg_catalog.format_type(param_type_oid, NULL) AS data_type
+    FROM 
+        param_info";
         command.Parameters.Add(new NpgsqlParameter("@functionName", functionName));
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            parameters.Add((reader.GetString(0), reader.GetString(1)));
+            var paramName = reader.GetString(0);
+            var dataType = reader.GetString(1);
+
+            // Remove 'p_' prefix if present
+            if (paramName.StartsWith("p_"))
+            {
+                paramName = paramName.Substring(2); // Remove the first two characters
+            }
+
+            parameters.Add((paramName, dataType));
         }
 
         return parameters;
     }
+
 
     /*
     private List<string> GetRolesFromJwtToken()
