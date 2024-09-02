@@ -111,7 +111,11 @@ app.UseRouting();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/server/swagger/v1/swagger.json", "SuperHeroAPI V1");
+        options.RoutePrefix = "swagger"; // Sets the Swagger UI to be served at /server/swagger
+    });
 }
 
 //app.UseSerilogRequestLogging();
