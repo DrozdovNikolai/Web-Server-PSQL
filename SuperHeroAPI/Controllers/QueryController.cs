@@ -513,9 +513,9 @@ public class QueryController : ControllerBase
 
 
     [HttpGet("rest/{tableName}")]
-    public async Task<IActionResult> RestProcedureGet(string tableName, [FromQuery] Dictionary<string, string> parameters)
+    public async Task<IActionResult> RestProcedureGet(string tableName, [FromQuery] Dictionary<string, object> parameters)
     {
-        return await ExecuteFunction($"select_{tableName}", parameters, "GET");
+        return await ExecuteFunction2($"select_{tableName}", parameters, "GET");
     }
 
     [HttpPost("rest/{tableName}")]
@@ -756,48 +756,6 @@ public class QueryController : ControllerBase
 
 
 
-    private object ConvertParameterValue(object value, string dataType)
-    {
-        if (value == null || value is DBNull) return DBNull.Value;
-
-        // Handle JsonElement
-        if (value is JsonElement jsonElement)
-        {
-            if (jsonElement.ValueKind == JsonValueKind.String)
-            {
-                return jsonElement.GetString();
-            }
-            if (jsonElement.ValueKind == JsonValueKind.Number)
-            {
-                if (dataType.Contains("integer"))
-                    return jsonElement.GetInt32();
-                if (dataType.Contains("numeric") || dataType.Contains("double"))
-                    return jsonElement.GetDouble();
-            }
-            if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
-            {
-                return jsonElement.GetBoolean();
-            }
-            if (jsonElement.ValueKind == JsonValueKind.Object || jsonElement.ValueKind == JsonValueKind.Array)
-            {
-                return jsonElement.ToString(); // Or handle more complex cases if needed
-            }
-        }
-
-        // Convert based on data type
-        return dataType switch
-        {
-            "integer" => Convert.ToInt32(value),
-            "boolean" => Convert.ToBoolean(value),
-            "date" => Convert.ToDateTime(value),
-            "character varying" => value.ToString(),
-            "text" => value.ToString(),
-            "numeric" => Convert.ToDecimal(value),
-            "double precision" => Convert.ToDouble(value),
-            "timestamp without time zone" => DateTime.Parse(value.ToString()),
-            _ => value // Handle other types or default case
-        };
-    }
 
 
 
@@ -937,23 +895,6 @@ public class QueryController : ControllerBase
     }
 
 
-    /*
-    private List<string> GetRolesFromJwtToken()
-    {
-        var token = _httpContextAccessor.HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-        var handler = new JwtSecurityTokenHandler();
-        var jwtToken = handler.ReadJwtToken(token);
-
-        var rolesClaim = jwtToken.Claims.Where(c => c.Type == "http://schemas.microsoft.com/ws/2008/06/identity/claims/role");
-        if (rolesClaim != null)
-        {
-            return rolesClaim.Select(c => c.Value).ToList();
-        }
-
-        return new List<string>();
-    }
-    */
-
     private List<string> GetRolesFromJwtToken()
     {
         // Extract the token from the Authorization header
@@ -984,171 +925,7 @@ public class QueryController : ControllerBase
         return roles;
     }
 
-    private async Task<IActionResult> ExecuteFunction(string functionName, Dictionary<string, string> parameters, string httpMethod)
-    {
-        if (string.IsNullOrEmpty(functionName))
-        {
-            return BadRequest("Function name is required.");
-        }
 
-        using var connection = _context.Database.GetDbConnection();
-        await connection.OpenAsync();
-
-        var roles = GetRolesFromJwtToken();
-
-        // If no roles are available, return an error
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, "No roles available to set.");
-        }
-
-        foreach (var role in roles)
-        {
-            using var command = connection.CreateCommand();
-            try
-            {
-                // Set the role in PostgreSQL
-                command.CommandText = $"SET ROLE {role};";
-                await command.ExecuteNonQueryAsync();
-
-                // Prepare the function execution command
-                command.CommandType = CommandType.Text;
-                command.CommandText = $"SELECT {functionName}()";
-
-                if (parameters != null)
-                {
-                    foreach (var parameter in parameters)
-                    {
-                        var cmdParameter = command.CreateParameter();
-                        cmdParameter.ParameterName = parameter.Key;
-                        cmdParameter.Value = parameter.Value;
-                        command.Parameters.Add(cmdParameter);
-                    }
-                }
-
-                var result = "";
-                if (httpMethod == "GET")
-                {
-                    result = (string)await command.ExecuteScalarAsync();
-                    return Content(result, "application/json");
-                }
-                else
-                {
-                    await command.ExecuteNonQueryAsync();
-                    return Ok($"Function '{functionName}' executed successfully using {httpMethod} method.");
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log the error for this role, but try the next one
-                // Optionally, you could log the role and exception message for further analysis
-            }
-            finally
-            {
-                // Ensure the connection is open before resetting the role
-                if (connection.State == ConnectionState.Open)
-                {
-                    try
-                    {
-                        command.CommandText = "RESET ROLE;";
-                        await command.ExecuteNonQueryAsync();
-                    }
-                    catch (Exception resetEx)
-                    {
-                        // Handle any exceptions during RESET ROLE, such as logging
-                    }
-                }
-            }
-        }
-
-        // If none of the roles work, return an error
-        return StatusCode(403, "None of the roles were able to execute the function.");
-    }
-
-
-    private bool HasPermission(string procedureName, List<string> userRoles)
-    {
-        var operation = GetOperationFromProcedureName(procedureName);
-
-        // Get permissions for the user's roles using a JOIN
-        var permissions = from p in _context.Permissions
-                          join r in _context.Roles on p.RoleId equals r.RoleId
-                          where userRoles.Contains(r.RoleName) &&
-                                p.TableName == GetTableNameFromProcedureName(procedureName) &&
-                                p.Operation == operation
-                          select p;
-
-        // Check if any permission matches
-        return permissions.Any();
-    }
-
-    // Helper method to get the operation from the procedure name
-    private CrudOperation GetOperationFromProcedureName(string procedureName)
-    {
-        switch (procedureName.Split('_')[0])
-        {
-            case "insert":
-                return CrudOperation.Create;
-            case "update":
-                return CrudOperation.Update;
-            case "delete":
-                return CrudOperation.Delete;
-            default: // Assume Read for other procedures
-                return CrudOperation.Read;
-        }
-    }
-
-    // Helper method to get the table name from the procedure name
-    private string GetTableNameFromProcedureName(string procedureName)
-    {
-        return procedureName.Split('_')[1];
-    }
-
-    private object ConvertToDbType(string value, string postgresqlDataType)
-    {
-        switch (postgresqlDataType.ToLower())
-        {
-            case "integer":
-            case "serial":
-                return int.Parse(value);
-            case "varchar":
-            case "text":
-            case "character varying":
-                return value;
-            case "numeric":
-                return decimal.Parse(value);
-            case "date":
-                return DateTime.Parse(value);
-            case "boolean": // Add case for boolean
-                return bool.Parse(value);
-            default:
-                throw new ArgumentException($"Unsupported data type: {postgresqlDataType}");
-        }
-    }
-
-
-    private List<ColumnDefinition> GetColumnDefinitionsForTable(string tableName)
-    {
-
-        using var command = _context.Database.GetDbConnection().CreateCommand();
-        command.CommandText = $"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '{tableName}'";
-        command.CommandType = CommandType.Text;
-
-        _context.Database.OpenConnection();
-        using var reader = command.ExecuteReader();
-
-        List<ColumnDefinition> columnDefinitions = new List<ColumnDefinition>();
-        while (reader.Read())
-        {
-            string columnName = reader.GetString(0);
-            string dataType = reader.GetString(1);
-            columnDefinitions.Add(new ColumnDefinition { ColumnName = columnName, DataType = dataType });
-        }
-
-        _context.Database.CloseConnection();
-
-        return columnDefinitions;
-    }
 
 
 }
