@@ -105,20 +105,31 @@ builder.Services.AddAuthorization(options =>
 
 
 var app = builder.Build();
+
+// Set the base path for the application
 app.UsePathBase("/server");
 app.UseRouting();
-// Configure the HTTP request pipeline.
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
-        // Swagger endpoint with base path "/server"
         options.SwaggerEndpoint("/server/swagger/v1/swagger.json", "SuperHeroAPI V1");
-        options.RoutePrefix = "swagger"; // URL will be /server/swagger
+        options.RoutePrefix = "swagger";
     });
 }
-
+app.UseSwagger(options =>
+{
+    options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+    {
+        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}/server";
+        swaggerDoc.Servers = new List<OpenApiServer>
+        {
+            new OpenApiServer { Url = serverUrl }
+        };
+    });
+});
 
 //app.UseSerilogRequestLogging();
 
