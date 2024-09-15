@@ -962,7 +962,7 @@ public class QueryController : ControllerBase
         try
         {
             // Define the path where the file will be saved
-            var folderPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+            var folderPath = Path.Combine("/var/www/ncatbird.ru/html", "docx");
             if (!Directory.Exists(folderPath))
             {
                 Directory.CreateDirectory(folderPath); // Create directory if it doesn't exist
@@ -979,7 +979,7 @@ public class QueryController : ControllerBase
             }
 
             // Return the file path
-            var fileUrl = $"{Request.Scheme}://{Request.Host}/uploads/{fileName}";
+            var fileUrl = $"{Request.Scheme}://{Request.Host}/docx/{fileName}";
             return Ok(new { filePath = fileUrl });
         }
         catch (Exception ex)
@@ -987,6 +987,7 @@ public class QueryController : ControllerBase
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
+
 
 
     [HttpPost("CreateProcedure")]
