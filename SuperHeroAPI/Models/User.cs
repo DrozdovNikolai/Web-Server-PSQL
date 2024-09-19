@@ -11,7 +11,7 @@ namespace SuperHeroAPI.Models
         public virtual ICollection<UserRole> UserRoles { get; set; }
 
         public virtual ICollection<ProcedureUser> ProcedureUsers { get; } = new List<ProcedureUser>();
-
+        public virtual ICollection<FunctionUser> FunctionUsers { get; } = new List<FunctionUser>();
         public virtual ICollection<TableUser> TableUsers { get; } = new List<TableUser>();
 
 
