@@ -66,7 +66,7 @@ namespace PostgreSQL.Data
         public virtual DbSet<Payer> Payers { get; set; }
 
         public virtual DbSet<Permission> Permissions { get; set; }
-
+       
         public virtual DbSet<Position> Positions { get; set; }
 
         public virtual DbSet<Profile> Profiles { get; set; }
@@ -128,7 +128,7 @@ namespace PostgreSQL.Data
         public virtual DbSet<TableUser> TableUsers { get; set; }
         public virtual DbSet<TriggerUser> TriggerUsers { get; set; }
         public virtual DbSet<ProcedureUser> ProcedureUsers { get; set; }
-
+        public virtual DbSet<FunctionUser> FunctionUsers { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<TableUser>(entity =>
@@ -184,6 +184,24 @@ namespace PostgreSQL.Data
                 entity.HasOne(d => d.User).WithMany(p => p.ProcedureUsers)
                     .HasForeignKey(d => d.UserId)
                     .HasConstraintName("procedure_user_fk");
+            });
+            modelBuilder.Entity<FunctionUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("function_user_pkey");
+
+                entity.ToTable("function_user");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id");
+                entity.Property(e => e.FunctionName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("function_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.FunctionUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("function_user_fk");
             });
             modelBuilder.Entity<Attendance>(entity =>
             {

@@ -26,16 +26,33 @@ namespace SuperHeroAPI.Controllers
         [HttpPost("register")]
         public ActionResult<User> Register(UserDto request)
         {
+            // Step 1: Create a new Role in the Roles table
+      
 
+     
             User user = new User();
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.Username = request.Username;
             user.PasswordHash = passwordHash;
-            user.UserRoles = new List<UserRole> { new UserRole { RoleId = 2 } }; 
+
+            var newRole = new Role
+            {
+                RoleName = user.Username
+            };
 
 
+            _context.Roles.Add(newRole);
+            _context.SaveChanges();
+
+            user.UserRoles = new List<UserRole>
+    {
+        new UserRole { RoleId = newRole.RoleId } 
+    };
+
+           
             _context.Users.Add(user);
             _context.SaveChanges();
+
             return Ok(user);
         }
 
