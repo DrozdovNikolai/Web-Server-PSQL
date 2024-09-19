@@ -692,9 +692,21 @@ public class QueryController : ControllerBase
                 rolesTried = roles
             });
         }
+        catch (PostgresException pgEx)
+        {
+            // Handle PostgreSQL-specific errors
+            return StatusCode(500, new
+            {
+                success = false,
+                postgresError = pgEx.MessageText,
+                postgresDetails = pgEx.Detail,
+                postgresHint = pgEx.Hint,
+                postgresCode = pgEx.SqlState
+            }); ;
+        }
         catch (Exception ex)
         {
-            // Return a JSON object with error details
+            // Handle any other general errors
             return StatusCode(500, new
             {
                 success = false,
@@ -703,6 +715,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
 
@@ -813,19 +826,19 @@ public class QueryController : ControllerBase
         {
             await connection.OpenAsync();
 
-            // Get roles from the JWT token
+            // Получение ролей из JWT токена
             var roles = GetRolesFromJwtToken();
 
-            // If no roles are available, return an error in JSON format
+            // Если роли не найдены, возвращаем ошибку
             if (roles == null || roles.Count == 0)
             {
                 return StatusCode(403, new { success = false, message = "No roles available to set." });
             }
 
-            // Get parameter information
+            // Получение параметров функции
             var parameterDefinitions = await GetFunctionParametersAsync(functionName, connection);
 
-            // Build the parameter values
+            // Подготовка параметров для вызова функции
             var paramValues = new List<string>();
             foreach (var parameterDefinition in parameterDefinitions)
             {
@@ -833,12 +846,12 @@ public class QueryController : ControllerBase
                 var paramType = parameterDefinition.DataType;
                 var paramValue = parameters.ContainsKey(paramName) ? parameters[paramName] : null;
 
-                // Convert the parameter value to a string representation
+                // Форматирование значения параметра
                 var formattedValue = FormatParameterValue(paramValue, paramType);
                 paramValues.Add(formattedValue);
             }
 
-            // Prepare the SELECT statement with the function call
+            // Формирование запроса SELECT для вызова функции
             var selectStatement = new StringBuilder();
             selectStatement.Append($"SELECT {functionName}(");
             selectStatement.Append(string.Join(", ", paramValues));
@@ -848,31 +861,31 @@ public class QueryController : ControllerBase
             {
                 try
                 {
-                    // Set the role in PostgreSQL
+                    // Установка роли в PostgreSQL
                     using var roleCommand = connection.CreateCommand();
                     roleCommand.CommandText = $"SET ROLE \"{role}\";";
                     await roleCommand.ExecuteNonQueryAsync();
 
-                    // Execute the function and get the JSON result
+                    // Выполнение функции и получение результата
                     using var command = connection.CreateCommand();
                     command.CommandText = selectStatement.ToString();
                     var result = await command.ExecuteScalarAsync();
 
-                    // Assuming the function returns a JSON string, cast the result to string
+                    // Предполагается, что функция возвращает JSON-строку
                     var jsonResult = result?.ToString();
 
-                    // Return the result directly as JSON content
+                    // Возвращаем результат как JSON
                     return Content(jsonResult, "application/json");
                 }
                 catch (Exception ex)
                 {
-                    // Log or handle exception, then continue to the next role
+                    // Логирование ошибки и продолжение с другой ролью
                     Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                    // The loop naturally continues here
+                    // Переход к следующей роли
                 }
             }
 
-            // If no roles succeeded, return a JSON failure message
+            // Если ни одна роль не сработала, возвращаем сообщение о неудаче
             return StatusCode(403, new
             {
                 success = false,
@@ -880,9 +893,22 @@ public class QueryController : ControllerBase
                 rolesTried = roles
             });
         }
+        catch (PostgresException pgEx)
+        {
+            // Обработка ошибок PostgreSQL
+            return StatusCode(500, new
+            {
+                success = false,
+                message = "PostgreSQL error occurred during function execution.",
+                postgresError = pgEx.MessageText,
+                postgresDetails = pgEx.Detail,
+                postgresHint = pgEx.Hint,
+                postgresCode = pgEx.SqlState
+            });
+        }
         catch (Exception ex)
         {
-            // Return a JSON object with error details
+            // Обработка общих ошибок
             return StatusCode(500, new
             {
                 success = false,
@@ -891,6 +917,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
     private async Task<List<(string ParameterName, string DataType)>> GetFunctionParametersAsync(string functionName, DbConnection connection)
