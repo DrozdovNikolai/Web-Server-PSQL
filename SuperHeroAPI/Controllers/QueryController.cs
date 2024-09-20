@@ -648,13 +648,13 @@ public class QueryController : ControllerBase
             {
                 var paramName = parameterDefinition.ParameterName;
                 var paramType = parameterDefinition.DataType;
-                Console.WriteLine(parameters);
                 var paramValue = parameters.ContainsKey(paramName) ? parameters[paramName] : null;
                 var formattedValue = FormatParameterValue(paramValue, paramType);
                 paramValues.Add(formattedValue);
             }
 
             var callStatement = $"CALL {procedureName}({string.Join(", ", paramValues)});";
+            var failedRoles = new List<string>();
 
             foreach (var role in roles)
             {
@@ -678,22 +678,15 @@ public class QueryController : ControllerBase
                 }
                 catch (PostgresException pgEx)
                 {
-                    // Обработка ошибок PostgreSQL
-                    return StatusCode(500, new
-                    {
-                        success = false,
-                        message = "PostgreSQL error occurred during function execution.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    // Log PostgreSQL-specific error for the current role
+                    Console.WriteLine($"PostgreSQL error for role {role}: {pgEx.MessageText}");
+                    failedRoles.Add(role);
                 }
                 catch (Exception ex)
                 {
-                    // Log or handle exception, then continue to the next role
+                    // Log general error and continue to the next role
                     Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                    // The loop naturally continues here
+                    failedRoles.Add(role);
                 }
             }
 
@@ -702,7 +695,8 @@ public class QueryController : ControllerBase
             {
                 success = false,
                 message = "Procedure execution failed for all roles.",
-                rolesTried = roles
+                rolesTried = roles,
+                failedRoles = failedRoles
             });
         }
         catch (PostgresException pgEx)
@@ -711,11 +705,12 @@ public class QueryController : ControllerBase
             return StatusCode(500, new
             {
                 success = false,
+                message = "PostgreSQL error occurred during procedure execution.",
                 postgresError = pgEx.MessageText,
                 postgresDetails = pgEx.Detail,
                 postgresHint = pgEx.Hint,
                 postgresCode = pgEx.SqlState
-            }); ;
+            });
         }
         catch (Exception ex)
         {
@@ -728,6 +723,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
 
@@ -828,10 +824,6 @@ public class QueryController : ControllerBase
 
 
 
-
-
-
-
     private async Task<IActionResult> ExecuteFunction2(string functionName, Dictionary<string, object> parameters, string method)
     {
         using var connection = _context.Database.GetDbConnection();
@@ -870,6 +862,8 @@ public class QueryController : ControllerBase
             selectStatement.Append(string.Join(", ", paramValues));
             selectStatement.Append(") AS result;");
 
+            var failedRoles = new List<string>();
+
             foreach (var role in roles)
             {
                 try
@@ -892,22 +886,15 @@ public class QueryController : ControllerBase
                 }
                 catch (PostgresException pgEx)
                 {
-                    // Обработка ошибок PostgreSQL
-                    return StatusCode(500, new
-                    {
-                        success = false,
-                        message = "PostgreSQL error occurred during function execution.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    // Логирование ошибки PostgreSQL для текущей роли
+                    Console.WriteLine($"PostgreSQL error for role {role}: {pgEx.MessageText}");
+                    failedRoles.Add(role);
                 }
                 catch (Exception ex)
                 {
-                    // Логирование ошибки и продолжение с другой ролью
+                    // Логирование общей ошибки и продолжение с другой ролью
                     Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                    // Переход к следующей роли
+                    failedRoles.Add(role);
                 }
             }
 
@@ -916,7 +903,8 @@ public class QueryController : ControllerBase
             {
                 success = false,
                 message = "Function execution failed for all roles.",
-                rolesTried = roles
+                rolesTried = roles,
+                failedRoles = failedRoles
             });
         }
         catch (PostgresException pgEx)
@@ -943,6 +931,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
 
