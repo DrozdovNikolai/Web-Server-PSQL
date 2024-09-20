@@ -654,21 +654,23 @@ public class QueryController : ControllerBase
             }
 
             var callStatement = $"CALL {procedureName}({string.Join(", ", paramValues)});";
-            var failedRoles = new List<string>();
+            var errors = new List<string>(); // Collect errors for all roles that failed
 
             foreach (var role in roles)
             {
                 try
                 {
+                    // Set role for the current iteration
                     using var roleCommand = connection.CreateCommand();
                     roleCommand.CommandText = $"SET ROLE \"{role}\";";
                     await roleCommand.ExecuteNonQueryAsync();
 
+                    // Execute the stored procedure
                     using var command = connection.CreateCommand();
                     command.CommandText = callStatement;
                     await command.ExecuteNonQueryAsync();
 
-                    // Return a JSON object with success message and role
+                    // If successful, return a JSON object with success message and role
                     return Ok(new
                     {
                         success = true,
@@ -678,25 +680,25 @@ public class QueryController : ControllerBase
                 }
                 catch (PostgresException pgEx)
                 {
-                    // Log PostgreSQL-specific error for the current role
+                    // Log PostgreSQL-specific error for the current role and continue to the next one
                     Console.WriteLine($"PostgreSQL error for role {role}: {pgEx.MessageText}");
-                    failedRoles.Add(role);
+                    errors.Add($"Role: {role}, Error: {pgEx.MessageText}");
                 }
                 catch (Exception ex)
                 {
-                    // Log general error and continue to the next role
+                    // Log general error for the current role and continue to the next one
                     Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                    failedRoles.Add(role);
+                    errors.Add($"Role: {role}, Error: {ex.Message}");
                 }
             }
 
-            // If no roles succeeded, return a JSON failure message
+            // If no roles succeeded, return a JSON failure message with the errors
             return StatusCode(403, new
             {
                 success = false,
                 message = "Procedure execution failed for all roles.",
                 rolesTried = roles,
-                failedRoles = failedRoles
+                errors = errors
             });
         }
         catch (PostgresException pgEx)
@@ -723,6 +725,8 @@ public class QueryController : ControllerBase
             });
         }
     }
+
+
 
 
 
@@ -862,7 +866,7 @@ public class QueryController : ControllerBase
             selectStatement.Append(string.Join(", ", paramValues));
             selectStatement.Append(") AS result;");
 
-            var failedRoles = new List<string>();
+            var errors = new List<string>(); // To store errors for all roles tried
 
             foreach (var role in roles)
             {
@@ -886,25 +890,25 @@ public class QueryController : ControllerBase
                 }
                 catch (PostgresException pgEx)
                 {
-                    // Логирование ошибки PostgreSQL для текущей роли
+                    // Логирование ошибки PostgreSQL для текущей роли и продолжение с другой ролью
                     Console.WriteLine($"PostgreSQL error for role {role}: {pgEx.MessageText}");
-                    failedRoles.Add(role);
+                    errors.Add($"Role: {role}, Error: {pgEx.MessageText}");
                 }
                 catch (Exception ex)
                 {
                     // Логирование общей ошибки и продолжение с другой ролью
                     Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                    failedRoles.Add(role);
+                    errors.Add($"Role: {role}, Error: {ex.Message}");
                 }
             }
 
-            // Если ни одна роль не сработала, возвращаем сообщение о неудаче
+            // Если ни одна роль не сработала, возвращаем сообщение о неудаче с подробными ошибками
             return StatusCode(403, new
             {
                 success = false,
                 message = "Function execution failed for all roles.",
                 rolesTried = roles,
-                failedRoles = failedRoles
+                errors = errors
             });
         }
         catch (PostgresException pgEx)
@@ -931,6 +935,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
 
