@@ -676,6 +676,19 @@ public class QueryController : ControllerBase
                         role = role
                     });
                 }
+                catch (PostgresException pgEx)
+                {
+                    // Обработка ошибок PostgreSQL
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        message = "PostgreSQL error occurred during function execution.",
+                        postgresError = pgEx.MessageText,
+                        postgresDetails = pgEx.Detail,
+                        postgresHint = pgEx.Hint,
+                        postgresCode = pgEx.SqlState
+                    });
+                }
                 catch (Exception ex)
                 {
                     // Log or handle exception, then continue to the next role
@@ -876,6 +889,19 @@ public class QueryController : ControllerBase
 
                     // Возвращаем результат как JSON
                     return Content(jsonResult, "application/json");
+                }
+                catch (PostgresException pgEx)
+                {
+                    // Обработка ошибок PostgreSQL
+                    return StatusCode(500, new
+                    {
+                        success = false,
+                        message = "PostgreSQL error occurred during function execution.",
+                        postgresError = pgEx.MessageText,
+                        postgresDetails = pgEx.Detail,
+                        postgresHint = pgEx.Hint,
+                        postgresCode = pgEx.SqlState
+                    });
                 }
                 catch (Exception ex)
                 {
