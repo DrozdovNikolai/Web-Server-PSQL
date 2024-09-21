@@ -1708,18 +1708,18 @@ public class QueryController : ControllerBase
     }
     private string ExtractProcedureNameFromSql(string sql)
     {
-        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value : null;
+        var match = Regex.Match(sql, @"(PUBLIC\s+)?CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[2].Value : null;
     }
 
     private string ExtractFunctionNameFromSql(string sql)
     {
-        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+FUNCTION\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value : null;
+        var match = Regex.Match(sql, @"(PUBLIC\s+)?CREATE\s+OR\s+REPLACE\s+FUNCTION\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[2].Value : null;
     }
 
 
-   
+
     [HttpGet("GetProcedureInfo/{procedureName}")]
     public async Task<IActionResult> GetProcedureInfo(string procedureName)
     {
