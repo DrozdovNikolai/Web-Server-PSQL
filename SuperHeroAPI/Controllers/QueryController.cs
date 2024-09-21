@@ -1229,18 +1229,18 @@ public class QueryController : ControllerBase
                     dropCommand.CommandText = $"DROP PROCEDURE IF EXISTS {procedureName};";
                     await dropCommand.ExecuteNonQueryAsync();
 
-                    using var alterCommand = connection.CreateCommand();
-                    alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
-                    await alterCommand.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
+                   
                     using var command = connection.CreateCommand();
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
 
                     // Get the username from the JWT token
-                 
 
+                    using var alterCommand = connection.CreateCommand();
+                    alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
+                    await alterCommand.ExecuteNonQueryAsync();
+                    roleCommand.CommandText = "RESET ROLE";
+                    await roleCommand.ExecuteNonQueryAsync();
                     var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
                     if (user == null)
                     {
