@@ -1708,15 +1708,16 @@ public class QueryController : ControllerBase
     }
     private string ExtractProcedureNameFromSql(string sql)
     {
-        var match = Regex.Match(sql, @"(PUBLIC\s+)?CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[2].Value : null;
+        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+(public\.)?([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[2].Value : null; // Use Groups[2] to get the procedure name without "public."
     }
 
     private string ExtractFunctionNameFromSql(string sql)
     {
-        var match = Regex.Match(sql, @"(PUBLIC\s+)?CREATE\s+OR\s+REPLACE\s+FUNCTION\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[2].Value : null;
+        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(public\.)?([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[2].Value : null; // Use Groups[2] to get the function name without "public."
     }
+
 
 
 
