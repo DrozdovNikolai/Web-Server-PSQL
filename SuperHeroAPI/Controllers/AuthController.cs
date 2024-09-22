@@ -105,24 +105,26 @@ namespace SuperHeroAPI.Controllers
                 return NotFound("User not found.");
             }
 
-            // Step 2: Update the username and password if provided
+            // Step 2: Update the username if provided
             if (!string.IsNullOrWhiteSpace(request.Username))
             {
                 user.Username = request.Username;
             }
 
+            // Step 3: Update the password if provided
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
                 string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
                 user.PasswordHash = passwordHash;
             }
 
-            // Step 3: Save the changes to the database
+            // Step 4: Save the changes to the database
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
             return Ok(user);
         }
+
 
         private string CreateToken(dynamic user)
         {
@@ -153,6 +155,7 @@ namespace SuperHeroAPI.Controllers
     {
         public int Id { get; set; }         // User ID to identify the user
         public string Username { get; set; } // New Username (optional)
-        public string Password { get; set; } // New Password (optional)
+        public string? Password { get; set; } // New Password (optional, nullable)
     }
+
 }
