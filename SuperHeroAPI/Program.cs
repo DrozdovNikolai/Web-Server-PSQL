@@ -88,7 +88,7 @@ builder.Services.AddDbContext<DataContext>(options =>
     options.UseNpgsql("Host=195.93.252.168:5432; Database=superherodb; Username=postgres; Password=plsworkpls"));
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
-   // options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
 
 
