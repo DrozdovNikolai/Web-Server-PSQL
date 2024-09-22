@@ -95,6 +95,34 @@ namespace SuperHeroAPI.Controllers
 
             return Ok(userReturn);
         }
+        [HttpPut("update")]
+        public async Task<ActionResult<User>> UpdateUser(UpdateUserDto request)
+        {
+            // Step 1: Find the user by ID
+            var user = await _context.Users.FindAsync(request.Id);
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            // Step 2: Update the username and password if provided
+            if (!string.IsNullOrWhiteSpace(request.Username))
+            {
+                user.Username = request.Username;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Password))
+            {
+                string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+                user.PasswordHash = passwordHash;
+            }
+
+            // Step 3: Save the changes to the database
+            _context.Users.Update(user);
+            await _context.SaveChangesAsync();
+
+            return Ok(user);
+        }
 
         private string CreateToken(dynamic user)
         {
