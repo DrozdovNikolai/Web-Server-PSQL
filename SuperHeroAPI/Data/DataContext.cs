@@ -10,12 +10,12 @@ namespace PostgreSQL.Data
 
         public DataContext(DbContextOptions<DataContext> options) : base(options)
         {
-            // this.Configuration.LazyLoadingEnabled = false;
+            //this.Configuration.LazyLoadingEnabled = false;
         }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-            //  optionsBuilder.UseLazyLoadingProxies(); base.OnConfiguring(optionsBuilder);
+              optionsBuilder.UseLazyLoadingProxies(); base.OnConfiguring(optionsBuilder);
         }
 
 
