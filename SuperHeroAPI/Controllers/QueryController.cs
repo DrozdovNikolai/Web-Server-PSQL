@@ -2540,7 +2540,21 @@ public class QueryController : ControllerBase
                     }
 
                     roleCommand.CommandText = "RESET ROLE";
+
                     await roleCommand.ExecuteNonQueryAsync();
+                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                    if (user == null)
+                    {
+                        return NotFound("User not found.");
+                    }
+                    var triggernUser = new TriggerUser
+                    {
+                        TriggerName= triggerName,
+                        UserId = user.Id
+                    };
+
+                    _context.TriggerUsers.Add(triggernUser);
+                    await _context.SaveChangesAsync();
 
                     return Ok(new
                     {
