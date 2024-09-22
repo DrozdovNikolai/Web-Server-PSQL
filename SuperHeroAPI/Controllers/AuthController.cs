@@ -149,4 +149,10 @@ namespace SuperHeroAPI.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
+    public class UpdateUserDto
+    {
+        public int Id { get; set; }         // User ID to identify the user
+        public string Username { get; set; } // New Username (optional)
+        public string Password { get; set; } // New Password (optional)
+    }
 }
