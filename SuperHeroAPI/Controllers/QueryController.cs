@@ -2518,42 +2518,47 @@ public class QueryController : ControllerBase
             {
                 try
                 {
+                    // Set the role for the current user
                     using var roleCommand = connection.CreateCommand();
                     roleCommand.CommandText = $"SET ROLE \"{role}\";";
                     await roleCommand.ExecuteNonQueryAsync();
 
+                    // Extract trigger name (you can modify the regex to suit your SQL trigger naming conventions)
                     var triggerName = ExtractTriggerNameFromSql(sql);
                     if (string.IsNullOrEmpty(triggerName))
                     {
                         return BadRequest("Unable to extract trigger name from the SQL code.");
                     }
 
-                    // Execute the trigger creation SQL
+                    // Execute the SQL to create the trigger
                     using var command = connection.CreateCommand();
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
 
-                    await roleCommand.ExecuteNonQueryAsync();
+                    // Get the username from the JWT token
                     string username = User.Identity.Name;
                     if (string.IsNullOrEmpty(username))
                     {
                         return Unauthorized("User is not authorized.");
                     }
 
-            
+                    roleCommand.CommandText = "RESET ROLE";
+                    await roleCommand.ExecuteNonQueryAsync();
+
+                    // Add entry to TriggerUsers (assuming similar logic as TableUsers)
                     var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
                     if (user == null)
                     {
                         return NotFound("User not found.");
                     }
-                    var triggernUser = new TriggerUser
+
+                    var triggerUser = new TriggerUser
                     {
-                        TriggerName= triggerName,
+                        TriggerName = triggerName,
                         UserId = user.Id
                     };
 
-                    _context.TriggerUsers.Add(triggernUser);
+                    _context.TriggerUsers.Add(triggerUser);
                     await _context.SaveChangesAsync();
 
                     return Ok(new
@@ -2598,6 +2603,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
 
     [HttpPut("UpdateTriggerFromSql")]
