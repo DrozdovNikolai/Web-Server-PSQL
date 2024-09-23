@@ -2245,7 +2245,7 @@ public class QueryController : ControllerBase
 
                     var tableUser = new TableUser
                     {
-                        TableName = tableName,
+                        Tablename = tableName,
                         UserId = user.Id
                     };
 
