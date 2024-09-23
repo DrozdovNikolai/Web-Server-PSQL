@@ -138,7 +138,7 @@ namespace PostgreSQL.Data
                 entity.ToTable("table_user");
 
                 entity.Property(e => e.Id)
-                    .ValueGeneratedNever()
+                    .ValueGeneratedOnAdd()
                     .HasColumnName("id");
                 entity.Property(e => e.Tablename)
                     .HasColumnType("character varying")
@@ -156,7 +156,7 @@ namespace PostgreSQL.Data
                 entity.ToTable("trigger_user");
 
                 entity.Property(e => e.Id)
-                    .ValueGeneratedNever()
+                    .ValueGeneratedOnAdd()
                     .HasColumnName("id");
                 entity.Property(e => e.TriggerName)
                     .HasColumnType("character varying")
