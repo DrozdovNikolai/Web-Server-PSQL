@@ -2236,10 +2236,26 @@ public class QueryController : ControllerBase
                     roleCommand.CommandText = "RESET ROLE";
                     await roleCommand.ExecuteNonQueryAsync();
 
+                    // Add entry to TableUsers (assuming the table has columns: TableName and UserId)
+                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                    if (user == null)
+                    {
+                        return NotFound("User not found.");
+                    }
+
+                    var tableUser = new TableUser
+                    {
+                        TableName = tableName,
+                        UserId = user.Id
+                    };
+
+                    _context.TableUsers.Add(tableUser);
+                    await _context.SaveChangesAsync();
+
                     return Ok(new
                     {
                         success = true,
-                        message = $"Table created successfully and ownership set to {username} for role {role}.",
+                        message = $"Table '{tableName}' created successfully and ownership set to {username} for role {role}.",
                         role = role
                     });
                 }
@@ -2278,6 +2294,7 @@ public class QueryController : ControllerBase
             });
         }
     }
+
 
     private string ExtractTableNameFromSql(string sql)
     {
