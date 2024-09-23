@@ -2220,7 +2220,8 @@ public class QueryController : ControllerBase
                     using var command = connection.CreateCommand();
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
-
+                    roleCommand.CommandText = "RESET ROLE";
+                    await roleCommand.ExecuteNonQueryAsync();
                     string username = User.Identity.Name;
                     if (string.IsNullOrEmpty(username))
                     {
@@ -2232,8 +2233,7 @@ public class QueryController : ControllerBase
                     alterCommand.CommandText = $"ALTER TABLE {tableName} OWNER TO \"{username}\";";
                     await alterCommand.ExecuteNonQueryAsync();
 
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
+ 
 
                     // Store the created table with the user who created it
                     var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
@@ -2532,16 +2532,16 @@ public class QueryController : ControllerBase
                     using var command = connection.CreateCommand();
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
+                    roleCommand.CommandText = "RESET ROLE";
 
+                    await roleCommand.ExecuteNonQueryAsync();
                     string username = User.Identity.Name;
                     if (string.IsNullOrEmpty(username))
                     {
                         return Unauthorized("User is not authorized.");
                     }
 
-                    roleCommand.CommandText = "RESET ROLE";
-
-                    await roleCommand.ExecuteNonQueryAsync();
+            
                     var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
                     if (user == null)
                     {
