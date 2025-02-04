@@ -2302,104 +2302,218 @@ public class QueryController : ControllerBase
     [HttpPut("UpdateTableFromSql")]
     public async Task<IActionResult> UpdateTableFromSql([FromBody] string sql)
     {
-        if (string.IsNullOrEmpty(sql))
+        if (string.IsNullOrWhiteSpace(sql))
         {
             return BadRequest("SQL code is required.");
         }
 
+        // Получаем роли из JWT (предполагается, что этот метод реализован)
         var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
+        if (roles == null || !roles.Any())
         {
             return StatusCode(403, new { message = "No roles available to set." });
         }
 
-        using var connection = _context.Database.GetDbConnection();
-        try
+        // Открываем соединение с базой данных
+        await using var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        // Перебираем роли – например, можно остановиться при первой успешной операции
+        foreach (var role in roles)
         {
-            await connection.OpenAsync();
+            // Каждое обновление делаем в рамках транзакции, чтобы обеспечить атомарность
+            await using var transaction = await connection.BeginTransactionAsync();
 
-            foreach (var role in roles)
+            try
             {
-                try
+                // 1. Устанавливаем роль
+                await using (var setRoleCmd = connection.CreateCommand())
                 {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                    setRoleCmd.Transaction = transaction;
+                    setRoleCmd.CommandText = $"SET ROLE \"{role}\";";
+                    await setRoleCmd.ExecuteNonQueryAsync();
+                }
 
-                    var tableName = ExtractTableNameFromSql(sql);
-                    if (string.IsNullOrEmpty(tableName))
+                // 2. Извлекаем имя таблицы из переданного SQL (метод ExtractTableNameFromSql должен быть реализован)
+                var tableName = ExtractTableNameFromSql(sql);
+                if (string.IsNullOrWhiteSpace(tableName))
+                {
+                    return BadRequest("Unable to extract table name from the SQL code.");
+                }
+
+                // 3. Проверяем, существует ли уже таблица
+                bool tableExists = false;
+                await using (var checkCmd = connection.CreateCommand())
+                {
+                    checkCmd.Transaction = transaction;
+                    checkCmd.CommandText =
+                        "SELECT EXISTS(" +
+                        "  SELECT 1 FROM information_schema.tables " +
+                        "  WHERE table_schema = 'public' AND table_name = @tableName" +
+                        ");";
+                    var param = checkCmd.CreateParameter();
+                    param.ParameterName = "tableName";
+                    param.Value = tableName;
+                    checkCmd.Parameters.Add(param);
+                    tableExists = (bool)await checkCmd.ExecuteScalarAsync();
+                }
+
+                // Если таблица существует – переименовываем её в резервную
+                string backupTableName = null;
+                if (tableExists)
+                {
+                    backupTableName = $"{tableName}_backup_{DateTime.UtcNow:yyyyMMddHHmmssfff}";
+                    await using (var renameCmd = connection.CreateCommand())
                     {
-                        return BadRequest("Unable to extract table name from the SQL code.");
+                        renameCmd.Transaction = transaction;
+                        renameCmd.CommandText = $"ALTER TABLE {tableName} RENAME TO {backupTableName};";
+                        await renameCmd.ExecuteNonQueryAsync();
+                    }
+                }
+
+                // 4. Создаём новую таблицу по переданному SQL‑коду
+                await using (var createCmd = connection.CreateCommand())
+                {
+                    createCmd.Transaction = transaction;
+                    createCmd.CommandText = sql;
+                    await createCmd.ExecuteNonQueryAsync();
+                }
+
+                // 5. Если была резервная таблица, переносим данные
+                if (tableExists)
+                {
+                    // Получаем список столбцов из резервной таблицы
+                    var backupColumns = new List<string>();
+                    await using (var backupColsCmd = connection.CreateCommand())
+                    {
+                        backupColsCmd.Transaction = transaction;
+                        backupColsCmd.CommandText =
+                            "SELECT column_name FROM information_schema.columns " +
+                            "WHERE table_schema = 'public' AND table_name = @backupTable;";
+                        var pBackup = backupColsCmd.CreateParameter();
+                        pBackup.ParameterName = "backupTable";
+                        pBackup.Value = backupTableName;
+                        backupColsCmd.Parameters.Add(pBackup);
+
+                        await using (var reader = await backupColsCmd.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                backupColumns.Add(reader.GetString(0));
+                            }
+                        }
                     }
 
-                    // Drop the table if it exists
-                    using var dropCommand = connection.CreateCommand();
-                    dropCommand.CommandText = $"DROP TABLE IF EXISTS {tableName};";
-                    await dropCommand.ExecuteNonQueryAsync();
-
-                    // Execute the table creation SQL (for update)
-                    using var command = connection.CreateCommand();
-                    command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync();
-
-                    // Get the username from the JWT token
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
+                    // Получаем список столбцов из новой таблицы
+                    var newTableColumns = new List<string>();
+                    await using (var newColsCmd = connection.CreateCommand())
                     {
-                        return Unauthorized("User is not authorized.");
+                        newColsCmd.Transaction = transaction;
+                        newColsCmd.CommandText =
+                            "SELECT column_name FROM information_schema.columns " +
+                            "WHERE table_schema = 'public' AND table_name = @tableName;";
+                        var pNew = newColsCmd.CreateParameter();
+                        pNew.ParameterName = "tableName";
+                        pNew.Value = tableName;
+                        newColsCmd.Parameters.Add(pNew);
+
+                        await using (var reader = await newColsCmd.ExecuteReaderAsync())
+                        {
+                            while (await reader.ReadAsync())
+                            {
+                                newTableColumns.Add(reader.GetString(0));
+                            }
+                        }
                     }
 
-                    // Set the table owner to the current user
-                    using var alterCommand = connection.CreateCommand();
-                    alterCommand.CommandText = $"ALTER TABLE {tableName} OWNER TO \"{username}\";";
-                    await alterCommand.ExecuteNonQueryAsync();
-
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    return Ok(new
+                    // Находим общие столбцы
+                    var commonColumns = backupColumns.Intersect(newTableColumns, StringComparer.OrdinalIgnoreCase).ToList();
+                    if (commonColumns.Any())
                     {
-                        success = true,
-                        message = $"Table updated successfully and ownership set to {username} for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
+                        var columnsList = string.Join(", ", commonColumns.Select(c => $"\"{c}\""));
+                        await using (var copyCmd = connection.CreateCommand())
+                        {
+                            copyCmd.Transaction = transaction;
+                            // Переносим данные: вставляем в новую таблицу данные из резервной для общих столбцов
+                            copyCmd.CommandText = $"INSERT INTO {tableName} ({columnsList}) SELECT {columnsList} FROM {backupTableName};";
+                            await copyCmd.ExecuteNonQueryAsync();
+                        }
+                    }
+
+                    // Удаляем резервную таблицу
+                    await using (var dropBackupCmd = connection.CreateCommand())
                     {
-                        success = false,
-                        message = "Error updating table.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                        dropBackupCmd.Transaction = transaction;
+                        dropBackupCmd.CommandText = $"DROP TABLE {backupTableName};";
+                        await dropBackupCmd.ExecuteNonQueryAsync();
+                    }
                 }
-                catch (Exception ex)
+
+                // 6. Определяем владельца таблицы – текущего пользователя (из JWT)
+                var username = User.Identity?.Name;
+                if (string.IsNullOrWhiteSpace(username))
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    return Unauthorized("User is not authorized.");
                 }
+                await using (var alterCmd = connection.CreateCommand())
+                {
+                    alterCmd.Transaction = transaction;
+                    alterCmd.CommandText = $"ALTER TABLE {tableName} OWNER TO \"{username}\";";
+                    await alterCmd.ExecuteNonQueryAsync();
+                }
+
+                // 7. Сбрасываем роль
+                await using (var resetRoleCmd = connection.CreateCommand())
+                {
+                    resetRoleCmd.Transaction = transaction;
+                    resetRoleCmd.CommandText = "RESET ROLE;";
+                    await resetRoleCmd.ExecuteNonQueryAsync();
+                }
+
+                // 8. Фиксируем транзакцию
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Table '{tableName}' updated successfully. Ownership set to '{username}' for role '{role}'."
+                });
             }
+            catch (PostgresException pgEx)
+            {
+                await transaction.RollbackAsync();
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Error updating table.",
+                    postgresError = pgEx.MessageText,
+                    postgresDetails = pgEx.Detail,
+                    postgresHint = pgEx.Hint,
+                    postgresCode = pgEx.SqlState
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                // Можно добавить логирование ошибки здесь
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Error executing table update SQL.",
+                    error = ex.Message
+                });
+            }
+        }
 
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Table update failed for all roles.",
-                rolesTried = roles
-            });
-        }
-        catch (Exception ex)
+        // Если ни для одной из ролей операция не прошла успешно:
+        return StatusCode(403, new
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing table update SQL.",
-                error = ex.Message
-            });
-        }
+            success = false,
+            message = "Table update failed for all roles.",
+            rolesTried = roles
+        });
     }
+
     [HttpDelete("DeleteTable/{tableName}")]
     public async Task<IActionResult> DeleteTable(string tableName)
     {
