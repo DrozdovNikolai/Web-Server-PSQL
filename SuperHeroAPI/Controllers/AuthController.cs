@@ -53,6 +53,7 @@ namespace SuperHeroAPI.Controllers
         [HttpPost("login")]
         public async Task<ActionResult<UserReturn>> Login(UserDto request)
         {
+            // Поиск пользователя и его ролей (аналогично Database First)
             var user = _context.Users
                 .Where(u => u.Username == request.Username)
                 .Select(u => new
@@ -74,7 +75,21 @@ namespace SuperHeroAPI.Controllers
                 return BadRequest("Wrong password.");
             }
 
-            string token = CreateToken(user);
+            // Определяем время истечения токена
+            var expiration = DateTime.UtcNow.AddDays(1);
+            string token = CreateToken(user, expiration);
+
+            // Создаем запись в таблице user_auth_tokens
+            var tokenRecord = new UserAuthToken
+            {
+                UserId = user.Id,
+                Token = token,
+                Expiration = expiration,
+                IsRevoked = false
+            };
+
+            _context.UserAuthTokens.Add(tokenRecord);
+            await _context.SaveChangesAsync();
 
             var userReturn = new UserReturn
             {
@@ -84,18 +99,9 @@ namespace SuperHeroAPI.Controllers
                 accessToken = token,
             };
 
-            // Добавляем активную сессию (токен) в список
-            ActiveUsers.Add(new ActiveUser
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Roles = user.Roles.ToList(),
-                Token = token,
-                Expiration = DateTime.Now.AddDays(1)
-            });
-
             return Ok(userReturn);
         }
+
 
         [HttpPut("update")]
         public async Task<ActionResult<User>> UpdateUser(UpdateUserDto request)
@@ -190,7 +196,7 @@ namespace SuperHeroAPI.Controllers
             return Ok($"Deauthorized {removedCount} session(s) for user with id {id}.");
         }
 
-        private string CreateToken(dynamic user)
+        private string CreateToken(dynamic user, DateTime expiration)
         {
             var claims = new List<Claim>
             {
@@ -202,14 +208,12 @@ namespace SuperHeroAPI.Controllers
                 claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
-            // Пример ключа, преобразованного из Base64 строки (убедитесь, что ключ хранится в безопасном месте)
             var key = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4="));
-
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256Signature);
 
             var token = new JwtSecurityToken(
                 claims: claims,
-                expires: DateTime.Now.AddDays(1),
+                expires: expiration,
                 signingCredentials: creds
             );
 
