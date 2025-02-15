@@ -159,8 +159,8 @@ var app = builder.Build();
 // Set the base path for the application
 app.UsePathBase("/server");
 app.UseRouting();
-
-if (app.Environment.IsDevelopment())
+//if (app.Environment.IsDevelopment())
+if (true)
 {
     app.UseSwagger();
     app.UseSwaggerUI(options =>
