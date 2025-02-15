@@ -203,7 +203,8 @@ app.UseSwagger(options =>
 //app.UseSerilogRequestLogging();
 
 //app.UseMiddleware<RequestResponseLoggingMiddleware>();
-
+//app.UseCors(MyAllowSpecificOrigins);
+app.UseCors(MyAllowAllOrigins);
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
@@ -211,8 +212,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 
-//app.UseCors(MyAllowSpecificOrigins);
- app.UseCors(MyAllowAllOrigins);
+
 
 app.MapControllers();
 
