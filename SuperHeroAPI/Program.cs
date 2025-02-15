@@ -98,6 +98,7 @@ builder.Services.AddAuthentication(options =>
 
             var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
             var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
+            Console.WriteLine($" token: {authToken}");
             if (authToken == null)
             {
                 Console.WriteLine("Token not found in DB");
