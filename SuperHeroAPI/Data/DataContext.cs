@@ -1465,13 +1465,9 @@ namespace PostgreSQL.Data
                 entity.ToTable("user_auth_tokens");
 
                 entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.Expiration)
-                    .HasColumnType("timestamp without time zone")
-                    .HasColumnName("expiration");
+                entity.Property(e => e.Expiration).HasColumnName("expiration");
                 entity.Property(e => e.IsRevoked).HasColumnName("is_revoked");
-                entity.Property(e => e.RevokedAt)
-                    .HasColumnType("timestamp without time zone")
-                    .HasColumnName("revoked_at");
+                entity.Property(e => e.RevokedAt).HasColumnName("revoked_at");
                 entity.Property(e => e.Token).HasColumnName("token");
                 entity.Property(e => e.UserId).HasColumnName("user_id");
             });
