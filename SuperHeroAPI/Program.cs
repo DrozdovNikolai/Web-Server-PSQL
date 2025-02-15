@@ -84,45 +84,43 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4="))
     };
 
-    options.Events = new JwtBearerEvents
+options.Events = new JwtBearerEvents
+{
+    OnTokenValidated = async context =>
     {
-        OnTokenValidated = async context =>
+        var tokenString = context.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+        Console.WriteLine($"Extracted token: {tokenString}");
+        if (string.IsNullOrEmpty(tokenString))
         {
-            // Извлекаем токен из заголовка Authorization
-            var tokenString = context.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
-            if (string.IsNullOrEmpty(tokenString))
-            {
-                context.Fail("No token provided.");
-                return;
-            }
-
-            // Получаем ApplicationDbContext через DI
-            var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
-            // Ищем запись токена в таблице
-            var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
-            if (authToken == null)
-            {
-                context.Fail("Token not found in database.");
-                return;
-            }
-            if (authToken.IsRevoked)
-            {
-                context.Fail("Token has been revoked.");
-                return;
-            }
-            if (authToken.Expiration < DateTime.UtcNow)
-            {
-                context.Fail("Token has expired.");
-                return;
-            }
-        },
-        OnAuthenticationFailed = context =>
-        {
-            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
-            return Task.CompletedTask;
+            context.Fail("No token provided.");
+            return;
         }
-    };
-});
+
+        var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
+        var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
+        if (authToken == null)
+        {
+            Console.WriteLine("Token not found in DB");
+            context.Fail("Token not found in database.");
+            return;
+        }
+        if (authToken.IsRevoked)
+        {
+            context.Fail("Token has been revoked.");
+            return;
+        }
+        if (authToken.Expiration < DateTime.UtcNow)
+        {
+            context.Fail("Token has expired.");
+            return;
+        }
+    },
+    OnAuthenticationFailed = context =>
+    {
+        Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+        return Task.CompletedTask;
+    }
+};
 
 
 Log.Logger = new LoggerConfiguration()
