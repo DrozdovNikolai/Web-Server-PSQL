@@ -86,10 +86,26 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
+        // Ётот метод вызываетс€ сразу после получени€ запроса до попытки извлечени€ токена.
+        OnMessageReceived = context =>
+        {
+            // ≈сли метод OPTIONS, пропускаем обработку токена
+            if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+            {
+                // Ќе вызываем context.Fail(), а просто завершаем обработку событи€
+                return Task.CompletedTask;
+            }
+            return Task.CompletedTask;
+        },
         OnTokenValidated = async context =>
         {
+            // ≈сли это OPTIONS, пропускаем дальнейшую валидацию
+            if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
+                return;
+
             var tokenString = context.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
             Console.WriteLine($"Extracted token: {tokenString}");
+
             if (string.IsNullOrEmpty(tokenString))
             {
                 context.Fail("No token provided.");
@@ -98,23 +114,26 @@ builder.Services.AddAuthentication(options =>
 
             var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
             var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
-            Console.WriteLine($" token: {authToken.Token}");
+
             if (authToken.Token == null)
             {
-                Console.WriteLine("Token not found in DB");
+                Console.WriteLine("Token not found in database.");
                 context.Fail("Token not found in database.");
                 return;
             }
             if (authToken.IsRevoked)
             {
+                Console.WriteLine("Token has been revoked.");
                 context.Fail("Token has been revoked.");
                 return;
             }
             if (authToken.Expiration < DateTime.UtcNow)
             {
+                Console.WriteLine("Token has expired.");
                 context.Fail("Token has expired.");
                 return;
             }
+            Console.WriteLine("Token is valid.");
         },
         OnAuthenticationFailed = context =>
         {
