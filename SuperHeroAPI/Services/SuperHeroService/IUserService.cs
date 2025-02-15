@@ -11,5 +11,8 @@
         Task<List<User>?> UpdateUser(int id, UserUpd request);
         
         Task<List<User>?> DeleteUser(int id);
+
+        Task<List<UserAuthToken>> GetActiveTokens();
+        Task<bool> DeauthorizeUserTokens(int userId);
     }
 }

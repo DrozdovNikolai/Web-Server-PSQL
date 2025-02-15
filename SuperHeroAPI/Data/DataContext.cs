@@ -1,7 +1,6 @@
 global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
-using SuperHeroAPI.Models;
 
 namespace PostgreSQL.Data
 {
@@ -129,6 +128,9 @@ namespace PostgreSQL.Data
         public virtual DbSet<TriggerUser> TriggerUsers { get; set; }
         public virtual DbSet<ProcedureUser> ProcedureUsers { get; set; }
         public virtual DbSet<FunctionUser> FunctionUsers { get; set; }
+
+        public virtual DbSet<UserAuthToken> UserAuthTokens { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<TableUser>(entity =>
@@ -1456,7 +1458,23 @@ namespace PostgreSQL.Data
             {
                 entity.HasIndex(e => e.Username, "unique_username").IsUnique();
             });
+            modelBuilder.Entity<UserAuthToken>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("user_auth_tokens_pkey");
 
+                entity.ToTable("user_auth_tokens");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Expiration)
+                    .HasColumnType("timestamp without time zone")
+                    .HasColumnName("expiration");
+                entity.Property(e => e.IsRevoked).HasColumnName("is_revoked");
+                entity.Property(e => e.RevokedAt)
+                    .HasColumnType("timestamp without time zone")
+                    .HasColumnName("revoked_at");
+                entity.Property(e => e.Token).HasColumnName("token");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+            });
             modelBuilder.Entity<UserRole>(entity =>
             {
                 entity.ToTable("UserRole");
