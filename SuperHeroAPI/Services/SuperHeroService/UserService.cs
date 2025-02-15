@@ -1,4 +1,11 @@
-﻿namespace SuperHeroAPI.Services.SuperHeroService
+﻿using Microsoft.EntityFrameworkCore;
+using SuperHeroAPI.Models; // Пространство имен, где определены модели User, UserAuthToken, UserRole и т.д.
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace SuperHeroAPI.Services.SuperHeroService
 {
     public class UserService : IUserService
     {
@@ -11,11 +18,11 @@
 
         public async Task<List<User>> AddUser(UserDto request)
         {
-
             User user = new User();
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.Username = request.Username;
             user.PasswordHash = passwordHash;
+            // Пример: назначаем роль по умолчанию (например, RoleId = 2)
             user.UserRoles = new List<UserRole> { new UserRole { User = user, RoleId = 2 } };
 
             _context.Users.Add(user);
@@ -37,8 +44,7 @@
 
         public async Task<List<User>> GetAllUsers()
         {
-            var users = await _context.Users.ToListAsync();
-            return users;
+            return await _context.Users.ToListAsync();
         }
 
         public async Task<User?> GetSingleUser(int id)
@@ -57,22 +63,53 @@
             if (user == null)
                 return null;
 
-            // Update user properties
+            // Обновление свойств пользователя
             user.Username = request.Username;
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // Update user roles
-            user.UserRoles.Clear(); 
+            // Обновление ролей пользователя
+            user.UserRoles.Clear();
             foreach (var roleId in request.RoleIds)
             {
                 user.UserRoles.Add(new UserRole { User = user, RoleId = roleId });
             }
 
             await _context.SaveChangesAsync();
-
             return await _context.Users.ToListAsync();
         }
 
+        /// <summary>
+        /// Получает список активных токенов (не отозванных и не просроченных).
+        /// </summary>
+        public async Task<List<UserAuthToken>> GetActiveTokens()
+        {
+            return await _context.UserAuthTokens
+                .Where(token => !token.IsRevoked && token.Expiration > DateTime.UtcNow)
+                .ToListAsync();
+        }
 
+        /// <summary>
+        /// Деавторизует (отзывает) все активные токены заданного пользователя.
+        /// </summary>
+        /// <param name="userId">ID пользователя</param>
+        /// <returns>True, если найдены и отозваны токены, иначе False</returns>
+        public async Task<bool> DeauthorizeUserTokens(int userId)
+        {
+            var tokens = await _context.UserAuthTokens
+                .Where(token => token.UserId == userId && !token.IsRevoked && token.Expiration > DateTime.UtcNow)
+                .ToListAsync();
+
+            if (tokens == null || tokens.Count == 0)
+                return false;
+
+            foreach (var token in tokens)
+            {
+                token.IsRevoked = true;
+                token.RevokedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
     }
 }

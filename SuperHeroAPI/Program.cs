@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Identity;
 using DynamicAuthorization.Mvc.Core.Extensions;
 using DynamicAuthorization.Mvc.JsonStore.Extensions;
 using DynamicAuthorization.Mvc.Ui;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 
 
@@ -63,14 +64,63 @@ builder.Services.AddSwaggerGen(options =>
 
     options.OperationFilter<SecurityRequirementsOperationFilter>();
 });
-builder.Services.AddAuthentication().AddJwtBearer(options =>
+
+
+
+
+
+builder.Services.AddAuthentication(options =>
 {
-options.TokenValidationParameters = new TokenValidationParameters
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+})
+.AddJwtBearer(options =>
 {
-    ValidateIssuerSigningKey = true,
-    ValidateAudience = false,
-    ValidateIssuer = false,
-    IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4="))
+    options.TokenValidationParameters = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        ValidateAudience = false,
+        ValidateIssuer = false,
+        IssuerSigningKey = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4="))
+    };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnTokenValidated = async context =>
+        {
+            // Извлекаем токен из заголовка Authorization
+            var tokenString = context.Request.Headers["Authorization"].FirstOrDefault()?.Replace("Bearer ", "");
+            if (string.IsNullOrEmpty(tokenString))
+            {
+                context.Fail("No token provided.");
+                return;
+            }
+
+            // Получаем ApplicationDbContext через DI
+            var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
+            // Ищем запись токена в таблице
+            var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
+            if (authToken == null)
+            {
+                context.Fail("Token not found in database.");
+                return;
+            }
+            if (authToken.IsRevoked)
+            {
+                context.Fail("Token has been revoked.");
+                return;
+            }
+            if (authToken.Expiration < DateTime.UtcNow)
+            {
+                context.Fail("Token has expired.");
+                return;
+            }
+        },
+        OnAuthenticationFailed = context =>
+        {
+            Console.WriteLine($"Authentication failed: {context.Exception.Message}");
+            return Task.CompletedTask;
+        }
     };
 });
 

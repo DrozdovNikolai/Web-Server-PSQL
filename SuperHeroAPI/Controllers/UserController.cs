@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using SuperHeroAPI.Services.SuperHeroService;
 
 namespace SuperHeroAPI.Controllers
@@ -67,6 +68,27 @@ namespace SuperHeroAPI.Controllers
 
             return Ok(result);
         }
+
+        [HttpGet("tokens")]
+
+        public async Task<ActionResult<List<UserAuthToken>>> GetAllTokens()
+        {
+            var tokens = await _iUserService.GetActiveTokens();
+            return Ok(tokens);
+        }
+
+        // Деавторизация (отзыв токенов) для пользователя по id
+        [HttpPost("deauthorize/{id}")]
+
+        public async Task<ActionResult> DeauthorizeUser(int id)
+        {
+            var success = await _iUserService.DeauthorizeUserTokens(id);
+            if (!success)
+                return NotFound("No active tokens found for the user.");
+
+            return Ok($"User with id {id} has been deauthorized.");
+        }
+
     }
 
 }

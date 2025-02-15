@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -11,25 +12,20 @@ namespace SuperHeroAPI.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-
         private readonly DataContext _context;
+
+        // Статический список для отслеживания активных сессий (JWT токенов)
+        private static List<ActiveUser> ActiveUsers = new List<ActiveUser>();
 
         public AuthController(DataContext context)
         {
             _context = context;
         }
 
-
-
-
-
         [HttpPost("register")]
         public ActionResult<User> Register(UserDto request)
         {
-            // Step 1: Create a new Role in the Roles table
-      
-
-     
+            // Шаг 1: Создаем нового пользователя и его роль (для демонстрации создаем роль, совпадающую с именем пользователя)
             User user = new User();
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.Username = request.Username;
@@ -40,22 +36,19 @@ namespace SuperHeroAPI.Controllers
                 RoleName = user.Username
             };
 
-
             _context.Roles.Add(newRole);
             _context.SaveChanges();
 
             user.UserRoles = new List<UserRole>
-    {
-        new UserRole { RoleId = newRole.RoleId } 
-    };
+            {
+                new UserRole { RoleId = newRole.RoleId }
+            };
 
-           
             _context.Users.Add(user);
             _context.SaveChanges();
 
             return Ok(user);
         }
-
 
         [HttpPost("login")]
         public async Task<ActionResult<UserReturn>> Login(UserDto request)
@@ -68,7 +61,6 @@ namespace SuperHeroAPI.Controllers
                     u.Username,
                     u.PasswordHash,
                     Roles = u.UserRoles.Select(ur => ur.Role.RoleName)
-  
                 })
                 .FirstOrDefault();
 
@@ -90,41 +82,113 @@ namespace SuperHeroAPI.Controllers
                 Username = user.Username,
                 Roles = user.Roles.ToList(),
                 accessToken = token,
-
             };
+
+            // Добавляем активную сессию (токен) в список
+            ActiveUsers.Add(new ActiveUser
+            {
+                Id = user.Id,
+                Username = user.Username,
+                Roles = user.Roles.ToList(),
+                Token = token,
+                Expiration = DateTime.Now.AddDays(1)
+            });
 
             return Ok(userReturn);
         }
+
         [HttpPut("update")]
         public async Task<ActionResult<User>> UpdateUser(UpdateUserDto request)
         {
-            // Step 1: Find the user by ID
+            // Шаг 1: Поиск пользователя по ID
             var user = await _context.Users.FindAsync(request.Id);
             if (user == null)
             {
                 return NotFound("User not found.");
             }
 
-            // Step 2: Update the username if provided
+            // Шаг 2: Обновляем имя пользователя, если передано новое значение
             if (!string.IsNullOrWhiteSpace(request.Username))
             {
                 user.Username = request.Username;
             }
 
-            // Step 3: Update the password if provided
+            // Шаг 3: Обновляем пароль, если передано новое значение
             if (!string.IsNullOrWhiteSpace(request.Password))
             {
                 string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
                 user.PasswordHash = passwordHash;
             }
 
-            // Step 4: Save the changes to the database
+            // Шаг 4: Сохраняем изменения в БД
             _context.Users.Update(user);
             await _context.SaveChangesAsync();
 
             return Ok(user);
         }
 
+        /// <summary>
+        /// Метод для получения информации о текущем пользователе (на основе токена).
+        /// Возвращает имя и список ролей для построения интерфейса.
+        /// </summary>
+        [HttpGet("getUser")]
+        [Authorize]
+        public async Task<ActionResult> GetUser()
+        {
+            // Получаем имя пользователя из токена
+            var username = User.Identity?.Name;
+            if (string.IsNullOrEmpty(username))
+            {
+                return Unauthorized();
+            }
+
+            // Запрашиваем данные пользователя и его актуальные роли из базы данных
+            var user = await _context.Users
+                .Where(u => u.Username == username)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Username,
+                    Roles = u.UserRoles.Select(ur => ur.Role.RoleName)
+                })
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+            {
+                return NotFound("User not found.");
+            }
+
+            return Ok(user);
+        }
+
+
+        /// <summary>
+        /// Метод для получения всех авторизованных пользователей с активным JWT токеном.
+        /// При каждом запросе производится фильтрация просроченных токенов.
+        /// </summary>
+        [HttpGet("activeUsers")]
+        public ActionResult GetActiveUsers()
+        {
+            // Удаляем записи с истекшим сроком действия токена
+            ActiveUsers.RemoveAll(u => u.Expiration < DateTime.Now);
+            return Ok(ActiveUsers);
+        }
+
+        /// <summary>
+        /// Админский метод для деавторизации пользователя по его id.
+        /// Удаляет (деактивирует) активные сессии, связанные с данным пользователем.
+        /// </summary>
+        [HttpPost("deauthorize/{id}")]
+        [Authorize(Roles = "Admin")] // Только администратор может вызвать данный метод
+        public ActionResult DeauthorizeUser(int id)
+        {
+            int removedCount = ActiveUsers.RemoveAll(u => u.Id == id);
+            if (removedCount == 0)
+            {
+                return NotFound("No active session found for the given user.");
+            }
+            return Ok($"Deauthorized {removedCount} session(s) for user with id {id}.");
+        }
 
         private string CreateToken(dynamic user)
         {
@@ -138,6 +202,7 @@ namespace SuperHeroAPI.Controllers
                 claims.Add(new Claim(ClaimTypes.Role, role));
             }
 
+            // Пример ключа, преобразованного из Base64 строки (убедитесь, что ключ хранится в безопасном месте)
             var key = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4="));
 
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256Signature);
@@ -151,11 +216,22 @@ namespace SuperHeroAPI.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
+
+    // DTO для обновления пользователя
     public class UpdateUserDto
     {
-        public int Id { get; set; }         // User ID to identify the user
-        public string Username { get; set; } // New Username (optional)
-        public string? Password { get; set; } // New Password (optional, nullable)
+        public int Id { get; set; }         // ID пользователя
+        public string Username { get; set; } // Новый логин (опционально)
+        public string? Password { get; set; } // Новый пароль (опционально)
     }
 
+    // Класс для возврата активных сессий (пользователь + JWT токен)
+    public class ActiveUser
+    {
+        public int Id { get; set; }
+        public string Username { get; set; }
+        public List<string> Roles { get; set; }
+        public string Token { get; set; }
+        public DateTime Expiration { get; set; }
+    }
 }
