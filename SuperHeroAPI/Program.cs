@@ -17,9 +17,9 @@ using DynamicAuthorization.Mvc.Core.Extensions;
 using DynamicAuthorization.Mvc.JsonStore.Extensions;
 using DynamicAuthorization.Mvc.Ui;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using OfficeOpenXml;
 
-
-
+ExcelPackage.License.SetNonCommercialPersonal("Nikolai");
 
 //var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 var builder = WebApplication.CreateBuilder(args);
