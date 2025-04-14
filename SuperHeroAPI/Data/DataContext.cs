@@ -1,6 +1,7 @@
 global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
+using EFCore.NamingConventions;
 
 namespace PostgreSQL.Data
 {
@@ -14,7 +15,12 @@ namespace PostgreSQL.Data
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-              optionsBuilder.UseLazyLoadingProxies(); base.OnConfiguring(optionsBuilder);
+              optionsBuilder.UseLazyLoadingProxies();
+              
+              // Use snake_case naming convention for PostgreSQL
+              optionsBuilder.UseSnakeCaseNamingConvention();
+              
+              base.OnConfiguring(optionsBuilder);
         }
 
 
@@ -131,8 +137,111 @@ namespace PostgreSQL.Data
 
         public virtual DbSet<UserAuthToken> UserAuthTokens { get; set; }
 
+        public virtual DbSet<RequestLog> RequestLogs { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<Permission>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("pk_permissions");
+
+                entity.ToTable("ums_permissions");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Operation).HasColumnName("operation");
+                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                entity.Property(e => e.TableName).HasColumnName("table_name");
+            });
+
+            modelBuilder.Entity<RequestLog>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("ums_request_logs_pkey");
+
+                entity.ToTable("ums_request_logs");
+
+                entity.HasIndex(e => e.Path, "idx_request_logs_path");
+
+                entity.HasIndex(e => e.RequestTime, "idx_request_logs_request_time");
+
+                entity.HasIndex(e => e.StatusCode, "idx_request_logs_status_code");
+
+                entity.HasIndex(e => e.UserId, "idx_request_logs_user_id");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Duration).HasColumnName("duration");
+                entity.Property(e => e.IPAddress)
+                    .HasMaxLength(45)
+                    .HasColumnName("ip_address");
+                entity.Property(e => e.Method)
+                    .HasMaxLength(10)
+                    .HasColumnName("method");
+                entity.Property(e => e.Path).HasColumnName("path");
+                entity.Property(e => e.QueryString).HasColumnName("query_string");
+                entity.Property(e => e.RequestBody).HasColumnName("request_body");
+                entity.Property(e => e.RequestTime)
+                    .HasColumnType("timestamp without time zone")
+                    .HasColumnName("request_time");
+                entity.Property(e => e.ResponseBody).HasColumnName("response_body");
+                entity.Property(e => e.ResponseTime)
+                    .HasColumnType("timestamp without time zone")
+                    .HasColumnName("response_time");
+                entity.Property(e => e.StatusCode).HasColumnName("status_code");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.RequestUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("fk_user");
+            });
+
+            modelBuilder.Entity<Role>(entity =>
+            {
+                entity.HasKey(e => e.RoleId).HasName("ums_roles_pkey");
+
+                entity.ToTable("ums_roles");
+
+                entity.Property(e => e.RoleId).HasColumnName("id");
+                entity.Property(e => e.RoleName).HasColumnName("role_name");
+            });
+
+            modelBuilder.Entity<User>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("ums_users_pkey");
+
+                entity.ToTable("ums_users");
+
+                entity.HasIndex(e => e.Username, "ums_unique_username").IsUnique();
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.PasswordHash).HasColumnName("password_hash");
+                entity.Property(e => e.Username).HasColumnName("username");
+            });
+
+            modelBuilder.Entity<UserRole>(entity =>
+            {
+                entity.HasKey(e => e.UserRoleId).HasName("pk_user_role");
+
+                entity.ToTable("ums_user_role");
+
+                entity.HasIndex(e => e.RoleId, "IX_UserRole_RoleId");
+
+                entity.HasIndex(e => e.UserId, "IX_UserRole_UserId");
+
+                entity.Property(e => e.UserRoleId).HasColumnName("id");
+                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.Role).WithMany(p => p.UserRoles)
+                    .HasForeignKey(d => d.RoleId)
+                    .HasConstraintName("fk_user_role_roles_role_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.UserRoles)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("fk_user_role_users_user_id");
+            });
+
+
+
+
             modelBuilder.Entity<TableUser>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("table_user_pkey");
@@ -1454,10 +1563,7 @@ namespace PostgreSQL.Data
                     .HasConstraintName("tsch_teacher_id_fkey");
             });
 
-            modelBuilder.Entity<User>(entity =>
-            {
-                entity.HasIndex(e => e.Username, "unique_username").IsUnique();
-            });
+     
             modelBuilder.Entity<UserAuthToken>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("user_auth_tokens_pkey");
@@ -1470,18 +1576,6 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.RevokedAt).HasColumnName("revoked_at");
                 entity.Property(e => e.Token).HasColumnName("token");
                 entity.Property(e => e.UserId).HasColumnName("user_id");
-            });
-            modelBuilder.Entity<UserRole>(entity =>
-            {
-                entity.ToTable("UserRole");
-
-                entity.HasIndex(e => e.RoleId, "IX_UserRole_RoleId");
-
-                entity.HasIndex(e => e.UserId, "IX_UserRole_UserId");
-
-                entity.HasOne(d => d.Role).WithMany(p => p.UserRoles).HasForeignKey(d => d.RoleId);
-
-                entity.HasOne(d => d.User).WithMany(p => p.UserRoles).HasForeignKey(d => d.UserId);
             });
 
             modelBuilder.Entity<Workload>(entity =>
@@ -1518,6 +1612,8 @@ namespace PostgreSQL.Data
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("workload_teacher_id_fkey");
             });
+
+       
 
             OnModelCreatingPartial(modelBuilder);
         }

@@ -42,7 +42,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasKey("PermissionId");
 
-                    b.ToTable("Permissions");
+                    b.ToTable("Permissions", (string)null);
                 });
 
             modelBuilder.Entity("SuperHeroAPI.Models.Role", b =>
@@ -64,7 +64,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("Roles");
+                    b.ToTable("Roles", (string)null);
                 });
 
             modelBuilder.Entity("SuperHeroAPI.Models.SuperHero", b =>
@@ -93,7 +93,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("SuperHeroes");
+                    b.ToTable("SuperHeroes", (string)null);
                 });
 
             modelBuilder.Entity("SuperHeroAPI.Models.User", b =>
@@ -114,7 +114,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Users");
+                    b.ToTable("Users", (string)null);
                 });
 
             modelBuilder.Entity("SuperHeroAPI.md2.Attendance", b =>
@@ -1220,7 +1220,7 @@ namespace SuperHeroAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("programs");
+                    b.ToTable("programs", (string)null);
                 });
 
             modelBuilder.Entity("SuperHeroAPI.md2.Schedule", b =>
