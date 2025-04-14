@@ -1,20 +1,29 @@
-﻿using SuperHeroAPI.md2;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using SuperHeroAPI.md2;
 
 namespace SuperHeroAPI.Models
 {
+    [Table("ums_users")]
     public class User
     {
+        [Key]
+        [Column("id")]
         public int Id { get; set; }
-        public string Username { get; set; } = string.Empty;
-        public string PasswordHash { get; set; } = string.Empty;
         
-        public virtual ICollection<UserRole> UserRoles { get; set; }
+        [Column("username")]
+        public string Username { get; set; } = string.Empty;
+        
+        [Column("password_hash")]
+        public string PasswordHash { get; set; } = string.Empty;
 
-        public virtual ICollection<ProcedureUser> ProcedureUsers { get; } = new List<ProcedureUser>();
-        public virtual ICollection<FunctionUser> FunctionUsers { get; } = new List<FunctionUser>();
-        public virtual ICollection<TableUser> TableUsers { get; } = new List<TableUser>();
+        public virtual ICollection<TableUser> TableUsers { get; set; } = new List<TableUser>();
+        public virtual ICollection<TriggerUser> TriggerUsers { get; set; } = new List<TriggerUser>();
+        public virtual ICollection<ProcedureUser> ProcedureUsers { get; set; } = new List<ProcedureUser>();
+        public virtual ICollection<FunctionUser> FunctionUsers { get; set; } = new List<FunctionUser>();
+        public virtual ICollection<RequestLog> RequestUsers { get; set; } = new List<RequestLog>();
 
-
-        public virtual ICollection<TriggerUser> TriggerUsers { get; } = new List<TriggerUser>();
+        [InverseProperty("User")]
+        public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
     }
 }

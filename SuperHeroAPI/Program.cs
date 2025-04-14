@@ -18,6 +18,8 @@ using DynamicAuthorization.Mvc.JsonStore.Extensions;
 using DynamicAuthorization.Mvc.Ui;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using OfficeOpenXml;
+using SuperHeroAPI.Middleware;
+using SuperHeroAPI.Services;
 
 ExcelPackage.License.SetNonCommercialPersonal("Nikolai");
 
@@ -86,20 +88,20 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
-        // Этот метод вызывается сразу после получения запроса до попытки извлечения токена.
+        // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ.
         OnMessageReceived = context =>
         {
-            // Если метод OPTIONS, пропускаем обработку токена
+            // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ OPTIONS, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ
             if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
-                // Не вызываем context.Fail(), а просто завершаем обработку события
+                // пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ context.Fail(), пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
                 return Task.CompletedTask;
             }
             return Task.CompletedTask;
         },
         OnTokenValidated = async context =>
         {
-            // Если это OPTIONS, пропускаем дальнейшую валидацию
+            // пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ OPTIONS, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
             if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -153,8 +155,10 @@ builder.Services.AddScoped<ISuperHeroService, SuperHeroService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermission, PermissionService>();
+builder.Services.AddHostedService<DatabaseSetupService>();
 builder.Services.AddDbContext<DataContext>(options =>
-    options.UseNpgsql("Host=195.93.252.168:5432; Database=superherodb; Username=postgres; Password=plsworkpls"));
+    options.UseNpgsql("Host=195.93.252.168:5432; Database=restoretest; Username=postgres; Password=plsworkpls")
+           .UseSnakeCaseNamingConvention());
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
@@ -211,8 +215,7 @@ app.UseAuthentication();
 
 app.UseAuthorization();
 
-
-
+app.UseRequestLogging();
 
 app.MapControllers();
 
