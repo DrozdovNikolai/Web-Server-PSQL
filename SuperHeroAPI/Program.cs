@@ -5,7 +5,7 @@ global using Npgsql.EntityFrameworkCore.PostgreSQL;
 using SuperHeroAPI.Services.SuperHeroService;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.Filters;
-
+using DotNetEnv;
 
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.EntityFrameworkCore;
@@ -21,24 +21,17 @@ using OfficeOpenXml;
 using SuperHeroAPI.Middleware;
 using SuperHeroAPI.Services;
 
+// Включаем поддержку устаревшего поведения для timestamp без time zone
+AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+// Load environment variables from .env file
+Env.Load();
+
 ExcelPackage.License.SetNonCommercialPersonal("Nikolai");
 
-//var MyAllowSpecificOrigins = "_myAllowSpecificOrigins";
 var builder = WebApplication.CreateBuilder(args);
 var MyAllowAllOrigins = "_myAllowAllOrigins";
 
-
-/*
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy(name: MyAllowSpecificOrigins,
-                             policy =>
-                             {
-                                 policy.WithOrigins("http://localhost:8080")
-                                        .AllowAnyHeader();
-                             });
-});
-*/
 builder.Services.AddCors(options =>
 {
     options.AddPolicy(name: MyAllowAllOrigins,
@@ -49,6 +42,7 @@ builder.Services.AddCors(options =>
                                 .AllowAnyMethod();
                       });
 });
+
 // Add services to the container.
 var mvcBuilder= builder.Services.AddControllersWithViews();
 builder.Services.AddControllers();
@@ -67,10 +61,6 @@ builder.Services.AddSwaggerGen(options =>
     options.OperationFilter<SecurityRequirementsOperationFilter>();
 });
 
-
-
-
-
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -88,20 +78,20 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
-        // ���� ����� ���������� ����� ����� ��������� ������� �� ������� ���������� ������.
+        //           .
         OnMessageReceived = context =>
         {
-            // ���� ����� OPTIONS, ���������� ��������� ������
+            //   OPTIONS,   
             if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
             {
-                // �� �������� context.Fail(), � ������ ��������� ��������� �������
+                //   context.Fail(),    
                 return Task.CompletedTask;
             }
             return Task.CompletedTask;
         },
         OnTokenValidated = async context =>
         {
-            // ���� ��� OPTIONS, ���������� ���������� ���������
+            //   OPTIONS,   
             if (context.Request.Method.Equals("OPTIONS", StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -117,7 +107,7 @@ builder.Services.AddAuthentication(options =>
             var db = context.HttpContext.RequestServices.GetRequiredService<DataContext>();
             var authToken = await db.UserAuthTokens.FirstOrDefaultAsync(t => t.Token == tokenString);
 
-            if (authToken.Token == null)
+            if (authToken?.Token == null)
             {
                 Console.WriteLine("Token not found in database.");
                 context.Fail("Token not found in database.");
@@ -145,7 +135,6 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration).CreateLogger();
 
@@ -157,13 +146,12 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermission, PermissionService>();
 builder.Services.AddHostedService<DatabaseSetupService>();
 builder.Services.AddDbContext<DataContext>(options =>
-    options.UseNpgsql("Host=195.93.252.168:5432; Database=restoretest; Username=postgres; Password=plsworkpls")
+    options.UseNpgsql($"Host={Env.GetString("DB_HOST")}:{Env.GetString("DB_PORT")}; Database={Env.GetString("DB_NAME")}; Username={Env.GetString("DB_USER")}; Password={Env.GetString("DB_PASSWORD")}")
            .UseSnakeCaseNamingConvention());
 builder.Services.AddControllers().AddJsonOptions(options =>
 {
     options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
 });
-
 
 builder.Services.AddAuthorization(options =>
 {
@@ -175,14 +163,12 @@ builder.Services.AddAuthorization(options =>
         }));
 });
 
-
-
 var app = builder.Build();
 
 // Set the base path for the application
 app.UsePathBase("/server");
 app.UseRouting();
-//if (app.Environment.IsDevelopment())
+
 if (true)
 {
     app.UseSwagger();
@@ -204,15 +190,10 @@ app.UseSwagger(options =>
     });
 });
 
-//app.UseSerilogRequestLogging();
-
-//app.UseMiddleware<RequestResponseLoggingMiddleware>();
-//app.UseCors(MyAllowSpecificOrigins);
 app.UseCors(MyAllowAllOrigins);
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
-
 app.UseAuthorization();
 
 app.UseRequestLogging();
