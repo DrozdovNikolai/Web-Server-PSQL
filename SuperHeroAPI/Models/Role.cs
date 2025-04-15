@@ -17,5 +17,7 @@ namespace SuperHeroAPI.Models
 
         [JsonIgnore]
         public virtual ICollection<UserRole> UserRoles { get; set; } = new List<UserRole>();
+        [JsonIgnore]
+        public virtual ICollection<GlobalPermission> GlobalPermissions { get; set; } = new List<GlobalPermission>();
     }
 }

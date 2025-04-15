@@ -32,10 +32,10 @@ namespace SuperHeroAPI.Models
         [Column("status_code")]
         public int StatusCode { get; set; }
         
-        [Column("request_time")]
+        [Column("request_time", TypeName = "timestamp without time zone")]
         public DateTime RequestTime { get; set; }
         
-        [Column("response_time")]
+        [Column("response_time", TypeName = "timestamp without time zone")]
         public DateTime ResponseTime { get; set; }
         
         [Column("duration")]

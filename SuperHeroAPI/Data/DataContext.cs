@@ -24,120 +24,120 @@ namespace PostgreSQL.Data
         }
 
 
-        public virtual DbSet<Attendance> Attendances { get; set; }
+        public virtual DbSet<Attendance> Attendances { get; set; } = null!;
 
 
 
-        public virtual DbSet<Auditorium> Auditoria { get; set; }
+        public virtual DbSet<Auditorium> Auditoria { get; set; } = null!;
 
-        public virtual DbSet<Contract> Contracts { get; set; }
+        public virtual DbSet<Contract> Contracts { get; set; } = null!;
 
-        public virtual DbSet<Course> Courses { get; set; }
+        public virtual DbSet<Course> Courses { get; set; } = null!;
 
-        public virtual DbSet<CourseWork> CourseWorks { get; set; }
+        public virtual DbSet<CourseWork> CourseWorks { get; set; } = null!;
 
-        public virtual DbSet<Day> Days { get; set; }
+        public virtual DbSet<Day> Days { get; set; } = null!;
 
-        public virtual DbSet<Departament> Departaments { get; set; }
+        public virtual DbSet<Departament> Departaments { get; set; } = null!;
 
-        public virtual DbSet<Direction> Directions { get; set; }
+        public virtual DbSet<Direction> Directions { get; set; } = null!;
 
-        public virtual DbSet<Discipline> Disciplines { get; set; }
+        public virtual DbSet<Discipline> Disciplines { get; set; } = null!;
 
-        public virtual DbSet<ForSchedLec> ForSchedLecs { get; set; }
+        public virtual DbSet<ForSchedLec> ForSchedLecs { get; set; } = null!;
 
-        public virtual DbSet<ForSchedPrac> ForSchedPracs { get; set; }
+        public virtual DbSet<ForSchedPrac> ForSchedPracs { get; set; } = null!;
 
-        public virtual DbSet<Grade> Grades { get; set; }
+        public virtual DbSet<Grade> Grades { get; set; } = null!;
 
-        public virtual DbSet<Group> Groups { get; set; }
+        public virtual DbSet<Group> Groups { get; set; } = null!;
 
-        public virtual DbSet<Journal> Journals { get; set; }
+        public virtual DbSet<Journal> Journals { get; set; } = null!;
 
-        public virtual DbSet<KursVkr> KursVkrs { get; set; }
+        public virtual DbSet<KursVkr> KursVkrs { get; set; } = null!;
 
-        public virtual DbSet<LGroup> LGroups { get; set; }
+        public virtual DbSet<LGroup> LGroups { get; set; } = null!;
 
-        public virtual DbSet<LGroupsDay> LGroupsDays { get; set; }
+        public virtual DbSet<LGroupsDay> LGroupsDays { get; set; } = null!;
 
-        public virtual DbSet<LWishDay> LWishDays { get; set; }
+        public virtual DbSet<LWishDay> LWishDays { get; set; } = null!;
 
-        public virtual DbSet<Listener> Listeners { get; set; }
+        public virtual DbSet<Listener> Listeners { get; set; } = null!;
 
-        public virtual DbSet<ListenerWish> ListenerWishes { get; set; }
+        public virtual DbSet<ListenerWish> ListenerWishes { get; set; } = null!;
 
-        public virtual DbSet<PayGraph> PayGraphs { get; set; }
+        public virtual DbSet<PayGraph> PayGraphs { get; set; } = null!;
 
-        public virtual DbSet<Payer> Payers { get; set; }
+        public virtual DbSet<Payer> Payers { get; set; } = null!;
 
-        public virtual DbSet<Permission> Permissions { get; set; }
+        public virtual DbSet<Permission> Permissions { get; set; } = null!;
        
-        public virtual DbSet<Position> Positions { get; set; }
+        public virtual DbSet<Position> Positions { get; set; } = null!;
 
-        public virtual DbSet<Profile> Profiles { get; set; }
+        public virtual DbSet<Profile> Profiles { get; set; } = null!;
 
-        public virtual DbSet<Program_u> Programs { get; set; }
+        public virtual DbSet<Program_u> Programs { get; set; } = null!;
 
-        public virtual DbSet<Role> Roles { get; set; }
+        public virtual DbSet<Role> Roles { get; set; } = null!;
 
-        public virtual DbSet<Schedule> Schedules { get; set; }
+        public virtual DbSet<Schedule> Schedules { get; set; } = null!;
 
-        public virtual DbSet<ScientificAdvisorsCourseWorkReport> ScientificAdvisorsCourseWorkReports { get; set; }
+        public virtual DbSet<ScientificAdvisorsCourseWorkReport> ScientificAdvisorsCourseWorkReports { get; set; } = null!;
 
-        public virtual DbSet<Student> Students { get; set; }
+        public virtual DbSet<Student> Students { get; set; } = null!;
 
-        public virtual DbSet<StudentEducationFormReport> StudentEducationFormReports { get; set; }
+        public virtual DbSet<StudentEducationFormReport> StudentEducationFormReports { get; set; } = null!;
 
-        public virtual DbSet<Subject> Subjects { get; set; }
+        public virtual DbSet<Subject> Subjects { get; set; } = null!;
 
-        public virtual DbSet<SuperHero> SuperHeroes { get; set; }
+        public virtual DbSet<SuperHero> SuperHeroes { get; set; } = null!;
 
-        public virtual DbSet<TeachGruz> TeachGruzs { get; set; }
+        public virtual DbSet<TeachGruz> TeachGruzs { get; set; } = null!;
 
-        public virtual DbSet<Teacher> Teachers { get; set; }
+        public virtual DbSet<Teacher> Teachers { get; set; } = null!;
 
-        public virtual DbSet<Teachschedule> Teachschedules { get; set; }
+        public virtual DbSet<Teachschedule> Teachschedules { get; set; } = null!;
 
-        public virtual DbSet<Tegrsu> Tegrsus { get; set; }
+        public virtual DbSet<Tegrsu> Tegrsus { get; set; } = null!;
 
-        public virtual DbSet<TempDepartament> TempDepartaments { get; set; }
+        public virtual DbSet<TempDepartament> TempDepartaments { get; set; } = null!;
 
-        public virtual DbSet<TempDistribKit> TempDistribKits { get; set; }
+        public virtual DbSet<TempDistribKit> TempDistribKits { get; set; } = null!;
 
-        public virtual DbSet<TempFacName> TempFacNames { get; set; }
+        public virtual DbSet<TempFacName> TempFacNames { get; set; } = null!;
 
-        public virtual DbSet<TempItogVo> TempItogVos { get; set; }
+        public virtual DbSet<TempItogVo> TempItogVos { get; set; } = null!;
 
-        public virtual DbSet<TempOfoVo> TempOfoVos { get; set; }
+        public virtual DbSet<TempOfoVo> TempOfoVos { get; set; } = null!;
 
-        public virtual DbSet<TempPractice> TempPractices { get; set; }
+        public virtual DbSet<TempPractice> TempPractices { get; set; } = null!;
 
-        public virtual DbSet<TempProffesion> TempProffesions { get; set; }
+        public virtual DbSet<TempProffesion> TempProffesions { get; set; } = null!;
 
-        public virtual DbSet<TempSostav> TempSostavs { get; set; }
+        public virtual DbSet<TempSostav> TempSostavs { get; set; } = null!;
 
-        public virtual DbSet<TempSostavTest> TempSostavTests { get; set; }
+        public virtual DbSet<TempSostavTest> TempSostavTests { get; set; } = null!;
 
-        public virtual DbSet<TempTaskType> TempTaskTypes { get; set; }
+        public virtual DbSet<TempTaskType> TempTaskTypes { get; set; } = null!;
 
-        public virtual DbSet<TempTeachGruz> TempTeachGruzs { get; set; }
+        public virtual DbSet<TempTeachGruz> TempTeachGruzs { get; set; } = null!;
 
-        public virtual DbSet<Tsch> Tsches { get; set; }
+        public virtual DbSet<Tsch> Tsches { get; set; } = null!;
 
-        public virtual DbSet<User> Users { get; set; }
+        public virtual DbSet<User> Users { get; set; } = null!;
 
-        public virtual DbSet<UserRole> UserRoles { get; set; }
+        public virtual DbSet<UserRole> UserRoles { get; set; } = null!;
 
-        public virtual DbSet<Workload> Workloads { get; set; }
+        public virtual DbSet<Workload> Workloads { get; set; } = null!;
 
-        public virtual DbSet<TableUser> TableUsers { get; set; }
-        public virtual DbSet<TriggerUser> TriggerUsers { get; set; }
-        public virtual DbSet<ProcedureUser> ProcedureUsers { get; set; }
-        public virtual DbSet<FunctionUser> FunctionUsers { get; set; }
+        public virtual DbSet<TableUser> TableUsers { get; set; } = null!;
+        public virtual DbSet<TriggerUser> TriggerUsers { get; set; } = null!;
+        public virtual DbSet<ProcedureUser> ProcedureUsers { get; set; } = null!;
+        public virtual DbSet<FunctionUser> FunctionUsers { get; set; } = null!;
 
-        public virtual DbSet<UserAuthToken> UserAuthTokens { get; set; }
+        public virtual DbSet<UserAuthToken> UserAuthTokens { get; set; } = null!;
 
-        public virtual DbSet<RequestLog> RequestLogs { get; set; }
+        public virtual DbSet<RequestLog> RequestLogs { get; set; } = null!;
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -240,7 +240,24 @@ namespace PostgreSQL.Data
             });
 
 
+            modelBuilder.Entity<GlobalPermission>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("pk_globalpermissions");
 
+                entity.ToTable("ums_globalpermissions");
+
+                entity.Property(e => e.Id).HasColumnName("permission_id");
+                entity.Property(e => e.CreateGrant).HasColumnName("create_grant");
+                entity.Property(e => e.CreateTableGrant).HasColumnName("create_table_grant");
+                entity.Property(e => e.DeleteTableGrant).HasColumnName("delete_table_grant");
+                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                entity.Property(e => e.UpdateTableGrant).HasColumnName("update_table_grant");
+
+                entity.HasOne(d => d.Role).WithMany(p => p.GlobalPermissions)
+                    .HasForeignKey(d => d.RoleId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("fk_role_id");
+            });
 
             modelBuilder.Entity<TableUser>(entity =>
             {
