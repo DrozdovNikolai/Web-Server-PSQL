@@ -2,7 +2,6 @@ global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
 using EFCore.NamingConventions;
-using SuperHeroAPI.md4;
 
 namespace PostgreSQL.Data
 {
@@ -329,7 +328,7 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.UserId).HasColumnName("user_id");
 
                 entity.HasOne(d => d.User).WithOne(p => p.UserAuthToken)
-                    .HasForeignKey<UmsUserAuthToken>(d => d.Id)
+                    .HasForeignKey<UserAuthToken>(d => d.Id)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("fk_user_id");
             });

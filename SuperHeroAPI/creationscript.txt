@@ -187,4 +187,7 @@ ALTER TABLE IF EXISTS ums.ums_request_logs
 CREATE INDEX IF NOT EXISTS idx_request_logs_user_id
     ON ums.ums_request_logs(user_id);
 
+
+
+
 END;
