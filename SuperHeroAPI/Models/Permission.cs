@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SuperHeroAPI.Models
 {
-    [Table("ums_permissions")]
+    [Table("ums_permissions", Schema = "ums")]
     public class Permission
     {
         [Key]
@@ -21,5 +21,6 @@ namespace SuperHeroAPI.Models
         
         [ForeignKey("RoleId")]
         public virtual Role Role { get; set; } = null!;
+
     }
 }

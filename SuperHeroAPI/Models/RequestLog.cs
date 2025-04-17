@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SuperHeroAPI.Models
 {
-    [Table("ums_request_logs")]
+    [Table("ums_request_logs", Schema = "ums")]
     public class RequestLog
     {
         [Key]

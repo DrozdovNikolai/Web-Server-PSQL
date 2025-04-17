@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SuperHeroAPI.Models
 {
-    [Table("ums_global_permissions")]
+    [Table("ums_global_permissions", Schema = "ums")]
     public class GlobalPermission
     {
         [Key]
