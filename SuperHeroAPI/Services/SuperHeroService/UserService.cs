@@ -22,8 +22,22 @@ namespace SuperHeroAPI.Services.SuperHeroService
             string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.Username = request.Username;
             user.PasswordHash = passwordHash;
-            // Пример: назначаем роль по умолчанию (например, RoleId = 2)
-            user.UserRoles = new List<UserRole> { new UserRole { User = user, RoleId = 2 } };
+            
+            // Find the guest role by name instead of using a hardcoded role ID
+            var guestRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.RoleName == "guest");
+            
+            if (guestRole != null)
+            {
+                // Assign the guest role to the new user
+                user.UserRoles = new List<UserRole> { new UserRole { User = user, RoleId = guestRole.RoleId } };
+            }
+            else
+            {
+                // If guest role doesn't exist, log warning and don't assign any role
+                Console.WriteLine("Warning: 'guest' role not found. User created without any role.");
+                user.UserRoles = new List<UserRole>();
+            }
 
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
