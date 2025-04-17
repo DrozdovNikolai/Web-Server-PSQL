@@ -2,6 +2,7 @@ global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
 using EFCore.NamingConventions;
+using SuperHeroAPI.md4;
 
 namespace PostgreSQL.Data
 {
@@ -141,29 +142,89 @@ namespace PostgreSQL.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<FunctionUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("function_user_pkey");
+
+                entity.ToTable("ums_function_user", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.FunctionName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("function_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.FunctionUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("function_user_fk");
+            });
+
+            modelBuilder.Entity<GlobalPermission>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("pk_globalpermissions");
+
+                entity.ToTable("ums_globalpermissions", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("permission_id");
+                entity.Property(e => e.CreateGrant)
+                    .HasDefaultValue(false)
+                    .HasColumnName("create_grant");
+                entity.Property(e => e.CreateTableGrant)
+                    .HasDefaultValue(false)
+                    .HasColumnName("create_table_grant");
+                entity.Property(e => e.DeleteTableGrant)
+                    .HasDefaultValue(false)
+                    .HasColumnName("delete_table_grant");
+                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                entity.Property(e => e.UpdateTableGrant)
+                    .HasDefaultValue(false)
+                    .HasColumnName("update_table_grant");
+
+                entity.HasOne(d => d.Role).WithMany(p => p.GlobalPermissions)
+                    .HasForeignKey(d => d.RoleId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("fk_role_id");
+            });
+
             modelBuilder.Entity<Permission>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("pk_permissions");
 
-                entity.ToTable("ums_permissions");
+                entity.ToTable("ums_permissions", "ums");
 
                 entity.Property(e => e.Id).HasColumnName("id");
                 entity.Property(e => e.Operation).HasColumnName("operation");
                 entity.Property(e => e.RoleId).HasColumnName("role_id");
                 entity.Property(e => e.TableName).HasColumnName("table_name");
+
+                entity.HasOne(d => d.Role).WithMany(p => p.Permissions)
+                    .HasForeignKey(d => d.RoleId)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("fk_role_id");
+            });
+
+            modelBuilder.Entity<ProcedureUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("procedure_user_pkey");
+
+                entity.ToTable("ums_procedure_user", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.ProcedureName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("procedure_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.ProcedureUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("procedure_user_fk");
             });
 
             modelBuilder.Entity<RequestLog>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("ums_request_logs_pkey");
 
-                entity.ToTable("ums_request_logs");
-
-                entity.HasIndex(e => e.Path, "idx_request_logs_path");
-
-                entity.HasIndex(e => e.RequestTime, "idx_request_logs_request_time");
-
-                entity.HasIndex(e => e.StatusCode, "idx_request_logs_status_code");
+                entity.ToTable("ums_request_logs", "ums");
 
                 entity.HasIndex(e => e.UserId, "idx_request_logs_user_id");
 
@@ -197,17 +258,51 @@ namespace PostgreSQL.Data
             {
                 entity.HasKey(e => e.RoleId).HasName("ums_roles_pkey");
 
-                entity.ToTable("ums_roles");
+                entity.ToTable("ums_roles", "ums");
 
                 entity.Property(e => e.RoleId).HasColumnName("id");
                 entity.Property(e => e.RoleName).HasColumnName("role_name");
+            });
+
+            modelBuilder.Entity<TableUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("table_user_pkey");
+
+                entity.ToTable("ums_table_user", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.Tablename)
+                    .HasColumnType("character varying")
+                    .HasColumnName("tablename");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.TableUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("table_user_fk");
+            });
+
+            modelBuilder.Entity<TriggerUser>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("trigger_user_pkey");
+
+                entity.ToTable("ums_trigger_user", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.TriggerName)
+                    .HasColumnType("character varying")
+                    .HasColumnName("trigger_name");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithMany(p => p.TriggerUsers)
+                    .HasForeignKey(d => d.UserId)
+                    .HasConstraintName("trigger_user_fk");
             });
 
             modelBuilder.Entity<User>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("ums_users_pkey");
 
-                entity.ToTable("ums_users");
+                entity.ToTable("ums_users", "ums");
 
                 entity.HasIndex(e => e.Username, "ums_unique_username").IsUnique();
 
@@ -216,11 +311,34 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.Username).HasColumnName("username");
             });
 
+            modelBuilder.Entity<UserAuthToken>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("user_auth_tokens_pkey");
+
+                entity.ToTable("ums_user_auth_tokens", "ums");
+
+                entity.Property(e => e.Id)
+                    .ValueGeneratedOnAdd()
+                    .HasColumnName("id");
+                entity.Property(e => e.Expiration).HasColumnName("expiration");
+                entity.Property(e => e.IsRevoked)
+                    .HasDefaultValue(false)
+                    .HasColumnName("is_revoked");
+                entity.Property(e => e.RevokedAt).HasColumnName("revoked_at");
+                entity.Property(e => e.Token).HasColumnName("token");
+                entity.Property(e => e.UserId).HasColumnName("user_id");
+
+                entity.HasOne(d => d.User).WithOne(p => p.UserAuthToken)
+                    .HasForeignKey<UmsUserAuthToken>(d => d.Id)
+                    .OnDelete(DeleteBehavior.ClientSetNull)
+                    .HasConstraintName("fk_user_id");
+            });
+
             modelBuilder.Entity<UserRole>(entity =>
             {
                 entity.HasKey(e => e.UserRoleId).HasName("pk_user_role");
 
-                entity.ToTable("ums_user_role");
+                entity.ToTable("ums_user_role", "ums");
 
                 entity.HasIndex(e => e.RoleId, "IX_UserRole_RoleId");
 
@@ -237,99 +355,6 @@ namespace PostgreSQL.Data
                 entity.HasOne(d => d.User).WithMany(p => p.UserRoles)
                     .HasForeignKey(d => d.UserId)
                     .HasConstraintName("fk_user_role_users_user_id");
-            });
-
-
-            modelBuilder.Entity<GlobalPermission>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("pk_globalpermissions");
-
-                entity.ToTable("ums_globalpermissions");
-
-                entity.Property(e => e.Id).HasColumnName("permission_id");
-                entity.Property(e => e.CreateGrant).HasColumnName("create_grant");
-                entity.Property(e => e.CreateTableGrant).HasColumnName("create_table_grant");
-                entity.Property(e => e.DeleteTableGrant).HasColumnName("delete_table_grant");
-                entity.Property(e => e.RoleId).HasColumnName("role_id");
-                entity.Property(e => e.UpdateTableGrant).HasColumnName("update_table_grant");
-
-                entity.HasOne(d => d.Role).WithMany(p => p.GlobalPermissions)
-                    .HasForeignKey(d => d.RoleId)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("fk_role_id");
-            });
-
-            modelBuilder.Entity<TableUser>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("table_user_pkey");
-
-                entity.ToTable("table_user");
-
-                entity.Property(e => e.Id)
-                    .ValueGeneratedOnAdd()
-                    .HasColumnName("id");
-                entity.Property(e => e.Tablename)
-                    .HasColumnType("character varying")
-                    .HasColumnName("tablename");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-
-                entity.HasOne(d => d.User).WithMany(p => p.TableUsers)
-                    .HasForeignKey(d => d.UserId)
-                    .HasConstraintName("table_user_fk");
-            });
-            modelBuilder.Entity<TriggerUser>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("trigger_user_pkey");
-
-                entity.ToTable("trigger_user");
-
-                entity.Property(e => e.Id)
-                    .ValueGeneratedOnAdd()
-                    .HasColumnName("id");
-                entity.Property(e => e.TriggerName)
-                    .HasColumnType("character varying")
-                    .HasColumnName("trigger_name");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-
-                entity.HasOne(d => d.User).WithMany(p => p.TriggerUsers)
-                    .HasForeignKey(d => d.UserId)
-                    .HasConstraintName("trigger_user_fk");
-            });
-            modelBuilder.Entity<ProcedureUser>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("procedure_user_pkey");
-
-                entity.ToTable("procedure_user");
-
-                entity.Property(e => e.Id)
-                    .ValueGeneratedOnAdd()
-                    .HasColumnName("id");
-                entity.Property(e => e.ProcedureName)
-                    .HasColumnType("character varying")
-                    .HasColumnName("procedure_name");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-
-                entity.HasOne(d => d.User).WithMany(p => p.ProcedureUsers)
-                    .HasForeignKey(d => d.UserId)
-                    .HasConstraintName("procedure_user_fk");
-            });
-            modelBuilder.Entity<FunctionUser>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("function_user_pkey");
-
-                entity.ToTable("function_user");
-
-                entity.Property(e => e.Id)
-                    .ValueGeneratedOnAdd()
-                    .HasColumnName("id");
-                entity.Property(e => e.FunctionName)
-                    .HasColumnType("character varying")
-                    .HasColumnName("function_name");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-
-                entity.HasOne(d => d.User).WithMany(p => p.FunctionUsers)
-                    .HasForeignKey(d => d.UserId)
-                    .HasConstraintName("function_user_fk");
             });
             modelBuilder.Entity<Attendance>(entity =>
             {

@@ -3,7 +3,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SuperHeroAPI.Models
 {
-    [Table("ums_user_role")]
+    [Table("ums_user_role", Schema = "ums")]
     public class UserRole
     {
         [Key]

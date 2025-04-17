@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace SuperHeroAPI.Models;
 
-[Table("ums_user_auth_tokens")]
+[Table("ums_user_auth_tokens", Schema = "ums")]
 public class UserAuthToken
 {
     [Key]
