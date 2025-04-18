@@ -7,6 +7,7 @@ using SuperHeroAPI.Services.SuperHeroService;
 using System;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetEnv;
@@ -84,7 +85,19 @@ namespace SuperHeroAPI.Services
                             // Read the creation script
                             string creationScript = await File.ReadAllTextAsync(scriptPath, cancellationToken);
                             
-                            // Execute the creation script
+                            // Replace the hardcoded database name with the one from .env
+                            string dbName = Env.GetString("DB_NAME");
+                            Console.WriteLine($"Replacing 'superherodb' with actual database name '{dbName}' in creation script");
+                            
+                            // Replace database name in all SQL statements that refer to the database
+                            creationScript = Regex.Replace(
+                                creationScript, 
+                                @"superherodb", 
+                                $"{dbName}", 
+                                RegexOptions.IgnoreCase
+                            );
+                            
+                            // Execute the modified creation script
                             await dbContext.Database.ExecuteSqlRawAsync(creationScript, cancellationToken);
                             
                             Console.WriteLine("UMS schema and tables created successfully.");
@@ -111,10 +124,10 @@ namespace SuperHeroAPI.Services
                     }
 
                     // Create guest role if it doesn't exist
-                    var guestRole = await dbContext.Roles.FirstOrDefaultAsync(r => r.RoleName == "guest", cancellationToken);
+                    var guestRole = await dbContext.Roles.FirstOrDefaultAsync(r => r.RoleName == "guests", cancellationToken);
                     if (guestRole == null)
                     {
-                        guestRole = new Role { RoleName = "guest" };
+                        guestRole = new Role { RoleName = "guests" };
                         await roleService.AddRole(guestRole);
                         Console.WriteLine("Created guest role");
                     }
@@ -170,7 +183,7 @@ namespace SuperHeroAPI.Services
                                 using (var command = connection.CreateCommand())
                                 {
                                     // Format the SQL command
-                                    command.CommandText = $"DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{dbUserName}') THEN EXECUTE 'ALTER ROLE \"{dbUserName}\" WITH SUPERUSER'; END IF; END $$;";
+                                    command.CommandText = $"DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'superadmin') THEN EXECUTE 'ALTER ROLE \"superadmin\" WITH SUPERUSER'; END IF; END $$;";
                                     await command.ExecuteNonQueryAsync(cancellationToken);
                                     Console.WriteLine($"Granted PostgreSQL superuser rights to '{dbUserName}'");
                                 }
