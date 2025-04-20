@@ -985,19 +985,39 @@ $BODY$;
 ALTER PROCEDURE ums.update_procedure_user(integer, integer, character varying)
     OWNER TO postgres;
 
-    CREATE OR REPLACE PROCEDURE ums.delete_procedure_user(
-	IN p_id integer,
-	IN p_procedurename character varying)
+CREATE OR REPLACE PROCEDURE ums.delete_procedure_user(
+    IN p_id integer,
+    IN p_procedurename character varying
+)
 LANGUAGE 'plpgsql'
 AS $BODY$
-    BEGIN
-		DROP procedure if exists p_procedurename;
-        DELETE from procedure_user where id=p_id;
-    END;
-    
+DECLARE
+    v_schema text := 'public';
+    v_procname text;
+    v_full_name text;
+BEGIN
+    -- Разбиваем имя, если указана схема
+    IF position('.' in p_procedurename) > 0 THEN
+        v_schema := split_part(p_procedurename, '.', 1);
+        v_procname := split_part(p_procedurename, '.', 2);
+    ELSE
+        v_procname := p_procedurename;
+    END IF;
+
+    -- Составляем полное имя процедуры для удаления
+    v_full_name := format('%I.%I', v_schema, v_procname);
+
+    -- Дропаем процедуру (предполагается, что у неё нет параметров или параметры фиксированы)
+    EXECUTE format('DROP PROCEDURE IF EXISTS %s', v_full_name);
+
+    -- Удаляем запись из таблицы
+    DELETE FROM procedure_user WHERE id = p_id;
+END;
 $BODY$;
+
 ALTER PROCEDURE ums.delete_procedure_user(integer, character varying)
     OWNER TO postgres;
+
 
     
     CREATE OR REPLACE FUNCTION ums.select_table_definition(

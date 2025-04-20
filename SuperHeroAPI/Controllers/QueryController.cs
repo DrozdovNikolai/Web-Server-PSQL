@@ -880,36 +880,37 @@ public class QueryController : ControllerBase
     }
 
 
-
-
-
-
-
-
     private async Task<List<(string ParameterName, string DataType)>> GetProcedureParametersAsync(string procedureName, DbConnection connection)
     {
         var parameters = new List<(string ParameterName, string DataType)>();
 
+        // Разбираем имя схемы и процедуры
+        var parts = procedureName.Split('.');
+        var schemaName = parts.Length == 2 ? parts[0] : "public";
+        var procName = parts.Length == 2 ? parts[1] : parts[0];
+
         using var command = connection.CreateCommand();
         command.CommandText = @"
-    WITH param_info AS (
-        SELECT 
-            unnest(proargnames) AS param_name,
-            unnest(proargtypes) AS param_type_oid
-        FROM 
-            pg_proc
-        JOIN 
-            pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
-        WHERE 
-            pg_proc.proname = @procedureName
-            AND pg_namespace.nspname = 'public'
-    )
+WITH param_info AS (
     SELECT 
-        param_name,
-        pg_catalog.format_type(param_type_oid, NULL) AS data_type
+        unnest(proargnames) AS param_name,
+        unnest(proargtypes) AS param_type_oid
     FROM 
-        param_info";
-        command.Parameters.Add(new NpgsqlParameter("@procedureName", procedureName));
+        pg_proc
+    JOIN 
+        pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+    WHERE 
+        pg_proc.proname = @procedureName
+        AND pg_namespace.nspname = @schemaName
+)
+SELECT 
+    param_name,
+    pg_catalog.format_type(param_type_oid, NULL) AS data_type
+FROM 
+    param_info";
+
+        command.Parameters.Add(new NpgsqlParameter("@procedureName", procName));
+        command.Parameters.Add(new NpgsqlParameter("@schemaName", schemaName));
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -917,10 +918,9 @@ public class QueryController : ControllerBase
             var paramName = reader.GetString(0);
             var dataType = reader.GetString(1);
 
-            // Remove 'p_' prefix if present
             if (paramName.StartsWith("p_"))
             {
-                paramName = paramName.Substring(2); // Remove the first two characters
+                paramName = paramName[2..];
             }
 
             parameters.Add((paramName, dataType));
@@ -928,8 +928,6 @@ public class QueryController : ControllerBase
 
         return parameters;
     }
-
-
 
 
 
@@ -1466,26 +1464,33 @@ public class QueryController : ControllerBase
     {
         var parameters = new List<(string ParameterName, string DataType)>();
 
+        // Разбираем имя схемы и функции
+        var parts = functionName.Split('.');
+        var schemaName = parts.Length == 2 ? parts[0] : "public";
+        var funcName = parts.Length == 2 ? parts[1] : parts[0];
+
         using var command = connection.CreateCommand();
         command.CommandText = @"
-    WITH param_info AS (
-        SELECT 
-            unnest(proargnames) AS param_name,
-            unnest(proargtypes) AS param_type_oid
-        FROM 
-            pg_proc
-        JOIN 
-            pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
-        WHERE 
-            pg_proc.proname = @functionName
-            AND pg_namespace.nspname = 'public'
-    )
+WITH param_info AS (
     SELECT 
-        param_name,
-        pg_catalog.format_type(param_type_oid, NULL) AS data_type
+        unnest(proargnames) AS param_name,
+        unnest(proargtypes) AS param_type_oid
     FROM 
-        param_info";
-        command.Parameters.Add(new NpgsqlParameter("@functionName", functionName));
+        pg_proc
+    JOIN 
+        pg_namespace ON pg_namespace.oid = pg_proc.pronamespace
+    WHERE 
+        pg_proc.proname = @functionName
+        AND pg_namespace.nspname = @schemaName
+)
+SELECT 
+    param_name,
+    pg_catalog.format_type(param_type_oid, NULL) AS data_type
+FROM 
+    param_info";
+
+        command.Parameters.Add(new NpgsqlParameter("@functionName", funcName));
+        command.Parameters.Add(new NpgsqlParameter("@schemaName", schemaName));
 
         using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -1493,10 +1498,9 @@ public class QueryController : ControllerBase
             var paramName = reader.GetString(0);
             var dataType = reader.GetString(1);
 
-            // Remove 'p_' prefix if present
             if (paramName.StartsWith("p_"))
             {
-                paramName = paramName.Substring(2); // Remove the first two characters
+                paramName = paramName[2..];
             }
 
             parameters.Add((paramName, dataType));
