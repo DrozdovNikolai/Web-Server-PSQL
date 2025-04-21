@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: superhero-api
+  labels:
+    app: superhero-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: superhero-api
+  template:
+    metadata:
+      labels:
+        app: superhero-api
+    spec:
+      containers:
+      - name: superhero-api
+        image: superhero-api:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: superhero-api-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: superhero-api-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: superhero-api-config
+              key: DB_NAME
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: superhero-api-secrets
+              key: DB_USER
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: superhero-api-secrets
+              key: DB_PASSWORD
+        - name: DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: superhero-api-secrets
+              key: DB_USERNAME
+        - name: DB_PASSWORD_USER
+          valueFrom:
+            secretKeyRef:
+              name: superhero-api-secrets
+              key: DB_PASSWORD_USER 

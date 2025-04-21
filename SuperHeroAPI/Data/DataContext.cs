@@ -2,6 +2,7 @@ global using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using SuperHeroAPI.md2;
 using EFCore.NamingConventions;
+using SuperHeroAPI.Models;
 
 namespace PostgreSQL.Data
 {
@@ -139,8 +140,53 @@ namespace PostgreSQL.Data
 
         public virtual DbSet<RequestLog> RequestLogs { get; set; } = null!;
 
+        public virtual DbSet<Container> Containers { get; set; } = null!;
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<Container>(entity =>
+            {
+                entity.HasKey(e => e.Id).HasName("ums_containers_pkey");
+
+                entity.ToTable("ums_containers", "ums");
+
+                entity.Property(e => e.Id).HasColumnName("id");
+                entity.Property(e => e.CreatedAt)
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP")
+                    .HasColumnName("created_at");
+                entity.Property(e => e.DbHost)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_host");
+                entity.Property(e => e.DbName)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_name");
+                entity.Property(e => e.DbPassword)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_password");
+                entity.Property(e => e.DbPasswordUser)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_password_user");
+                entity.Property(e => e.DbPort)
+                    .HasMaxLength(10)
+                    .HasColumnName("db_port");
+                entity.Property(e => e.DbUser)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_user");
+                entity.Property(e => e.DbUsername)
+                    .HasMaxLength(255)
+                    .HasColumnName("db_username");
+                entity.Property(e => e.ExternalUrl)
+                    .HasMaxLength(255)
+                    .HasDefaultValue("")
+                    .HasColumnName("external_url");
+                entity.Property(e => e.Name)
+                    .HasMaxLength(255)
+                    .HasColumnName("name");
+                entity.Property(e => e.Status)
+                    .HasMaxLength(50)
+                    .HasColumnName("status");
+                entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            });
             modelBuilder.Entity<FunctionUser>(entity =>
             {
                 entity.HasKey(e => e.Id).HasName("function_user_pkey");
@@ -1604,21 +1650,6 @@ namespace PostgreSQL.Data
                     .HasConstraintName("tsch_teacher_id_fkey");
             });
 
-     
-            modelBuilder.Entity<UserAuthToken>(entity =>
-            {
-                entity.HasKey(e => e.Id).HasName("user_auth_tokens_pkey");
-
-                entity.ToTable("user_auth_tokens");
-
-                entity.Property(e => e.Id).HasColumnName("id");
-                entity.Property(e => e.Expiration).HasColumnName("expiration");
-                entity.Property(e => e.IsRevoked).HasColumnName("is_revoked");
-                entity.Property(e => e.RevokedAt).HasColumnName("revoked_at");
-                entity.Property(e => e.Token).HasColumnName("token");
-                entity.Property(e => e.UserId).HasColumnName("user_id");
-            });
-
             modelBuilder.Entity<Workload>(entity =>
             {
                 entity.HasKey(e => e.WlId).HasName("workload_pkey");
@@ -1653,8 +1684,6 @@ namespace PostgreSQL.Data
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("workload_teacher_id_fkey");
             });
-
-       
 
             OnModelCreatingPartial(modelBuilder);
         }
