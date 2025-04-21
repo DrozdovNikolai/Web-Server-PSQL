@@ -105,6 +105,31 @@ CREATE TABLE IF NOT EXISTS ums.ums_request_logs
     CONSTRAINT ums_request_logs_pkey PRIMARY KEY (id)
 );
 
+-- Create the Containers table for managing Kubernetes deployments
+CREATE TABLE IF NOT EXISTS ums.ums_containers
+(
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    db_host VARCHAR(255) NOT NULL,
+    db_port VARCHAR(10) NOT NULL,
+    db_name VARCHAR(255) NOT NULL,
+    db_user VARCHAR(255) NOT NULL,
+    db_password VARCHAR(255) NOT NULL,
+    db_username VARCHAR(255) NOT NULL,
+    db_password_user VARCHAR(255) NOT NULL,
+    external_url VARCHAR(255) NOT NULL DEFAULT '',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Grant necessary permissions for the containers table
+--INSERT INTO ums.ums_permissions (role_id, table_name, operation)
+--SELECT id, 'ums.containers', 10 -- ALL PRIVILEGES
+--FROM ums.ums_roles 
+--WHERE role_name = 'superadmin'
+--ON CONFLICT DO NOTHING;
+
 ALTER TABLE IF EXISTS ums.ums_user_auth_tokens
     ADD CONSTRAINT fk_user_id FOREIGN KEY (id)
     REFERENCES ums.ums_users (id) MATCH SIMPLE
@@ -197,36 +222,36 @@ DECLARE
     role_name TEXT;
     r RECORD;
 BEGIN
-    -- Получаем имя роли на основе role_id
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- Проходимся по всем пользовательским схемам (без системных)
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
     FOR r IN
         SELECT schema_name
         FROM information_schema.schemata
         WHERE schema_name NOT IN ('pg_catalog', 'information_schema')
     LOOP
-        -- CREATE ON DATABASE (можно только 1 раз, не по схемам)
+        -- CREATE ON DATABASE (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ 1 пїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ)
         IF NEW.create_table_grant THEN
             EXECUTE format('GRANT CREATE ON DATABASE %I TO %I', 'superherodb', role_name);
         END IF;
 
-        -- UPDATE ON таблицы в каждой схеме
+        -- UPDATE ON пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         IF NEW.update_table_grant THEN
             EXECUTE format('GRANT UPDATE ON ALL TABLES IN SCHEMA %I TO %I', r.schema_name, role_name);
         END IF;
 
-        -- DELETE ON таблицы в каждой схеме
+        -- DELETE ON пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         IF NEW.delete_table_grant THEN
             EXECUTE format('GRANT DELETE ON ALL TABLES IN SCHEMA %I TO %I', r.schema_name, role_name);
         END IF;
 
-        -- CREATE ON схема
+        -- CREATE ON пїЅпїЅпїЅпїЅпїЅ
         IF NEW.create_grant THEN
             EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I', r.schema_name, role_name);
         END IF;
 
-        -- USAGE на схему — полезно всегда, чтобы вообще можно было пользоваться объектами
+        -- USAGE пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I', r.schema_name, role_name);
     END LOOP;
 
@@ -245,35 +270,35 @@ VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- схема по умолчанию
+    schema_name TEXT := 'public'; -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- Получаем имя роли по role_id
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- Проверяем, есть ли точка в имени таблицы
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     IF POSITION('.' IN NEW.table_name) > 0 THEN
-        -- table_name содержит 'schema.table' или 'table.column'
+        -- table_name пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ 'schema.table' пїЅпїЅпїЅ 'table.column'
         IF NEW.operation IN (0,1,2) AND POSITION('.' IN split_part(NEW.table_name, '.', 2)) > 0 THEN
-            -- Случай: table.column (без схемы)
+            -- пїЅпїЅпїЅпїЅпїЅпїЅ: table.column (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ)
             table_name := split_part(NEW.table_name, '.', 1);
             column_name := split_part(NEW.table_name, '.', 2);
             full_table_ref := format('%I.%I', schema_name, table_name);
         ELSE
-            -- Случай: schema.table
+            -- пїЅпїЅпїЅпїЅпїЅпїЅ: schema.table
             schema_name := split_part(NEW.table_name, '.', 1);
             table_name := split_part(NEW.table_name, '.', 2);
             full_table_ref := format('%I.%I', schema_name, table_name);
         END IF;
     ELSE
-        -- Только имя таблицы
+        -- пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         table_name := NEW.table_name;
         full_table_ref := format('%I.%I', schema_name, table_name);
     END IF;
 
-    -- Обработка привилегий
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     IF NEW.operation = 0 THEN
         IF column_name IS NOT NULL THEN
             EXECUTE format('GRANT INSERT (%I) ON TABLE %s TO %I', column_name, full_table_ref, role_name);
@@ -349,21 +374,21 @@ DECLARE
     role_name TEXT;
     r RECORD;
 BEGIN
-    -- Получаем имя роли на основе role_id
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = OLD.role_id;
 
-    -- Обход всех пользовательских схем (без служебных)
+    -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ (пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
     FOR r IN
         SELECT schema_name
         FROM information_schema.schemata
         WHERE schema_name NOT IN ('pg_catalog', 'information_schema')
     LOOP
-        -- Отзыв CREATE ON DATABASE (один раз)
+        -- пїЅпїЅпїЅпїЅпїЅ CREATE ON DATABASE (пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ)
         IF OLD.create_table_grant THEN
             EXECUTE format('REVOKE CREATE ON DATABASE %I FROM %I', 'superherodb', role_name);
         END IF;
 
-        -- Отзыв прав на таблицы по каждой схеме
+        -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         IF OLD.update_table_grant THEN
             EXECUTE format('REVOKE UPDATE ON ALL TABLES IN SCHEMA %I FROM %I', r.schema_name, role_name);
         END IF;
@@ -372,12 +397,12 @@ BEGIN
             EXECUTE format('REVOKE DELETE ON ALL TABLES IN SCHEMA %I FROM %I', r.schema_name, role_name);
         END IF;
 
-        -- Отзыв CREATE на схему
+        -- пїЅпїЅпїЅпїЅпїЅ CREATE пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         IF OLD.create_grant THEN
             EXECUTE format('REVOKE CREATE ON SCHEMA %I FROM %I', r.schema_name, role_name);
         END IF;
 
-        -- Отзыв базового USAGE тоже можно добавить (опционально)
+        -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ USAGE пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
         EXECUTE format('REVOKE USAGE ON SCHEMA %I FROM %I', r.schema_name, role_name);
     END LOOP;
 
@@ -397,17 +422,17 @@ VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- схема по умолчанию
+    schema_name TEXT := 'public'; -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- Получаем имя роли по role_id
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = OLD.role_id;
 
-    -- Определяем формат: column-level или schema.table
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ: column-level пїЅпїЅпїЅ schema.table
     IF POSITION('.' IN OLD.table_name) > 0 THEN
-        -- Если вторая часть содержит ещё одну точку — значит это table.column
+        -- пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ table.column
         IF OLD.operation IN (0,1,2) AND POSITION('.' IN split_part(OLD.table_name, '.', 2)) > 0 THEN
             -- column-level
             table_name := split_part(OLD.table_name, '.', 1);
@@ -420,12 +445,12 @@ BEGIN
             full_table_ref := format('%I.%I', schema_name, table_name);
         END IF;
     ELSE
-        -- Только имя таблицы, без схемы
+        -- пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         table_name := OLD.table_name;
         full_table_ref := format('%I.%I', schema_name, table_name);
     END IF;
 
-    -- Отзыв прав
+    -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     IF OLD.operation = 0 THEN
         IF column_name IS NOT NULL THEN
             EXECUTE format('REVOKE INSERT (%I) ON TABLE %s FROM %I', column_name, full_table_ref, role_name);
@@ -498,10 +523,10 @@ DECLARE
     role_name TEXT;
     r RECORD;
 BEGIN
-    -- Получаем имя роли по role_id
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅ role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- CREATE ON DATABASE (всегда один раз, не зависит от схем)
+    -- CREATE ON DATABASE (пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ)
     IF OLD.create_table_grant <> NEW.create_table_grant THEN
         IF OLD.create_table_grant THEN
             EXECUTE format('REVOKE CREATE ON DATABASE %I FROM %I', 'superherodb', role_name);
@@ -511,7 +536,7 @@ BEGIN
         END IF;
     END IF;
 
-    -- Обход всех пользовательских схем
+    -- пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     FOR r IN
         SELECT schema_name
         FROM information_schema.schemata
@@ -547,7 +572,7 @@ BEGIN
             END IF;
         END IF;
 
-        -- Базовый USAGE можно обновлять по желанию (здесь не включён, но легко добавить)
+        -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅ USAGE пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
     END LOOP;
 
     RETURN NEW;
@@ -591,21 +616,21 @@ VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- по умолчанию
+    schema_name TEXT := 'public'; -- пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- Получаем имя роли
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- Только если operation или table_name изменились
+    -- пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ operation пїЅпїЅпїЅ table_name пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     IF OLD.operation <> NEW.operation OR OLD.table_name <> NEW.table_name THEN
 
         ---------------------------------------------------------------------
-        -- 1. REVOKE старые права
+        -- 1. REVOKE пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         ---------------------------------------------------------------------
-        -- Определяем схему, таблицу и колонку из OLD.table_name
+        -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ OLD.table_name
         column_name := NULL;
         IF POSITION('.' IN OLD.table_name) > 0 THEN
             IF OLD.operation IN (0,1,2) AND POSITION('.' IN split_part(OLD.table_name, '.', 2)) > 0 THEN
@@ -645,9 +670,9 @@ BEGIN
         END IF;
 
         ---------------------------------------------------------------------
-        -- 2. GRANT новые права
+        -- 2. GRANT пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         ---------------------------------------------------------------------
-        schema_name := 'public'; -- сбрасываем схему по умолчанию
+        schema_name := 'public'; -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         column_name := NULL;
 
         IF POSITION('.' IN NEW.table_name) > 0 THEN
@@ -847,9 +872,9 @@ ALTER PROCEDURE ums.insert_globalpermissions(integer, boolean, boolean, boolean,
 LANGUAGE 'plpgsql'
 AS $BODY$
 BEGIN
-    -- Проверяем, существует ли запись с таким permissionid
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅпїЅ permissionid
     IF EXISTS (SELECT 1 FROM ums.ums_globalpermissions WHERE permissionid = p_permissionid) THEN
-        -- Если запись существует, обновляем её
+        -- пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅ
         UPDATE ums.ums_globalpermissions
         SET roleid = p_roleid,
             create_table_grant = p_create_table_grant,
@@ -858,7 +883,7 @@ BEGIN
             create_grant = p_create_grant
         WHERE permissionid = p_permissionid;
     ELSE
-        -- Если записи нет, вставляем новую, но не указываем p_permissionid, если это SERIAL
+        -- пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ p_permissionid, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅ SERIAL
         INSERT INTO ums.ums_globalpermissions (roleid, create_table_grant, update_table_grant, delete_table_grant, create_grant)
         VALUES (p_roleid, p_create_table_grant, p_update_table_grant, p_delete_table_grant, p_create_grant);
     END IF;
@@ -996,7 +1021,7 @@ DECLARE
     v_procname text;
     v_full_name text;
 BEGIN
-    -- Разбиваем имя, если указана схема
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
     IF position('.' in p_procedurename) > 0 THEN
         v_schema := split_part(p_procedurename, '.', 1);
         v_procname := split_part(p_procedurename, '.', 2);
@@ -1004,13 +1029,13 @@ BEGIN
         v_procname := p_procedurename;
     END IF;
 
-    -- Составляем полное имя процедуры для удаления
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     v_full_name := format('%I.%I', v_schema, v_procname);
 
-    -- Дропаем процедуру (предполагается, что у неё нет параметров или параметры фиксированы)
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ (пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅ пїЅ пїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ)
     EXECUTE format('DROP PROCEDURE IF EXISTS %s', v_full_name);
 
-    -- Удаляем запись из таблицы
+    -- пїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅ
     DELETE FROM procedure_user WHERE id = p_id;
 END;
 $BODY$;

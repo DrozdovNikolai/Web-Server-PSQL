@@ -57,17 +57,21 @@ namespace SuperHeroAPI.Services
                             string scriptPath = "creationscript.txt";
                             if (!File.Exists(scriptPath))
                             {
-                                Console.WriteLine($"ERROR: Creation script file not found at path: {Path.GetFullPath(scriptPath)}");
+                                Console.WriteLine($"Creation script not found at: {Path.GetFullPath(scriptPath)}");
                                 // Try to find the file in different locations
                                 var possiblePaths = new[] { 
                                     "creationscript.txt", 
+                                    "/app/creationscript.txt",
                                     "SuperHeroAPI/creationscript.txt",
                                     "../creationscript.txt",
-                                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "creationscript.txt")
+                                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "creationscript.txt"),
+                                    "/src/SuperHeroAPI/creationscript.txt",
+                                    "../../creationscript.txt"
                                 };
                                 
                                 foreach (var path in possiblePaths)
                                 {
+                                    Console.WriteLine($"Checking for script at: {Path.GetFullPath(path)}");
                                     if (File.Exists(path))
                                     {
                                         scriptPath = path;

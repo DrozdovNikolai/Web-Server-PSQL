@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using OfficeOpenXml;
 using SuperHeroAPI.Middleware;
 using SuperHeroAPI.Services;
+using SuperHeroAPI.Services.ContainerService;
 
 // Включаем поддержку устаревшего поведения для timestamp без time zone
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
@@ -144,6 +145,7 @@ builder.Services.AddScoped<ISuperHeroService, SuperHeroService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermission, PermissionService>();
+builder.Services.AddScoped<IContainerService, ContainerService>();
 builder.Services.AddHostedService<DatabaseSetupService>();
 builder.Services.AddDbContext<DataContext>(options =>
     options.UseNpgsql($"Host={Env.GetString("DB_HOST")}:{Env.GetString("DB_PORT")}; Database={Env.GetString("DB_NAME")}; Username={Env.GetString("DB_USER")}; Password={Env.GetString("DB_PASSWORD")}")
@@ -174,7 +176,7 @@ if (true)
     app.UseSwagger();
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("/server/swagger/v1/swagger.json", "SuperHeroAPI V1");
+        options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
     });
 }
@@ -182,7 +184,18 @@ app.UseSwagger(options =>
 {
     options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
     {
-        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}/server";
+        // Extract the container name from the path if it exists
+        string path = httpReq.Path.Value ?? "";
+        string containerPath = "";
+        
+        // Path format will be /{container-name}/server/swagger/...
+        var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (pathSegments.Length >= 2 && pathSegments[1] == "server")
+        {
+            containerPath = $"/{pathSegments[0]}";
+        }
+        
+        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{containerPath}/server";
         swaggerDoc.Servers = new List<OpenApiServer>
         {
             new OpenApiServer { Url = serverUrl }
