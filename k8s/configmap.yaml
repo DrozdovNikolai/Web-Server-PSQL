@@ -5,4 +5,4 @@ metadata:
 data:
   DB_HOST: "195.93.252.168"
   DB_PORT: "5432"
-  DB_NAME: "restoretest69"
+  DB_NAME: "restoretest70"
