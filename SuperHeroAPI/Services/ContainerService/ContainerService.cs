@@ -192,6 +192,30 @@ namespace SuperHeroAPI.Services.ContainerService
                 };
                 await _kubernetesClient.CreateNamespacedSecretAsync(secret, "default");
 
+                // Create PersistentVolumeClaim for file uploads
+                var pvcName = $"{container.Name.ToLower()}-file-pvc";
+                var pvc = new V1PersistentVolumeClaim
+                {
+                    Metadata = new V1ObjectMeta
+                    {
+                        Name = pvcName,
+                        NamespaceProperty = "default"
+                    },
+                    Spec = new V1PersistentVolumeClaimSpec
+                    {
+                        AccessModes = new List<string> { "ReadWriteOnce" },
+                        Resources = new V1ResourceRequirements
+                        {
+                            Requests = new Dictionary<string, ResourceQuantity>
+                            {
+                                ["storage"] = new ResourceQuantity("5Gi")
+                            }
+                        },
+                        StorageClassName = "manual" // Match your storage class
+                    }
+                };
+                await _kubernetesClient.CreateNamespacedPersistentVolumeClaimAsync(pvc, "default");
+
                 // Create Deployment
                 var deployment = new V1Deployment
                 {
@@ -324,6 +348,27 @@ namespace SuperHeroAPI.Services.ContainerService
                                                     }
                                                 }
                                             }
+                                        },
+                                        // Add volume mounts for file uploads
+                                        VolumeMounts = new List<V1VolumeMount>
+                                        {
+                                            new V1VolumeMount
+                                            {
+                                                Name = "file-upload-volume",
+                                                MountPath = "/var/www/ncatbird.ru/html"
+                                            }
+                                        }
+                                    }
+                                },
+                                // Add volumes to the pod spec
+                                Volumes = new List<V1Volume>
+                                {
+                                    new V1Volume
+                                    {
+                                        Name = "file-upload-volume",
+                                        PersistentVolumeClaim = new V1PersistentVolumeClaimVolumeSource
+                                        {
+                                            ClaimName = pvcName
                                         }
                                     }
                                 }
@@ -411,6 +456,55 @@ namespace SuperHeroAPI.Services.ContainerService
                     }
                 };
                 await _kubernetesClient.CreateNamespacedIngressAsync(ingress, "default");
+
+                // Create a separate ingress for file access
+                var fileIngress = new V1Ingress
+                {
+                    Metadata = new V1ObjectMeta
+                    {
+                        Name = $"{container.Name.ToLower()}-file-ingress",
+                        NamespaceProperty = "default",
+                        Annotations = new Dictionary<string, string>
+                        {
+                            ["kubernetes.io/ingress.class"] = "nginx",
+                            ["nginx.ingress.kubernetes.io/rewrite-target"] = "/docx/$2",
+                            ["nginx.ingress.kubernetes.io/use-regex"] = "true",
+                            ["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m"
+                        }
+                    },
+                    Spec = new V1IngressSpec
+                    {
+                        Rules = new List<V1IngressRule>
+                        {
+                            new V1IngressRule
+                            {
+                                Http = new V1HTTPIngressRuleValue
+                                {
+                                    Paths = new List<V1HTTPIngressPath>
+                                    {
+                                        new V1HTTPIngressPath
+                                        {
+                                            Path = $"/{container.Name.ToLower()}/docx(/|$)(.*)",
+                                            PathType = "ImplementationSpecific",
+                                            Backend = new V1IngressBackend
+                                            {
+                                                Service = new V1IngressServiceBackend
+                                                {
+                                                    Name = container.Name.ToLower(),
+                                                    Port = new V1ServiceBackendPort
+                                                    {
+                                                        Number = 80
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                };
+                await _kubernetesClient.CreateNamespacedIngressAsync(fileIngress, "default");
                 
                 // Get the ingress host if available, otherwise use localhost
                 string ingressHost = await GetIngressHost();
@@ -470,6 +564,10 @@ namespace SuperHeroAPI.Services.ContainerService
         {
             try
             {
+                // Delete File Ingress
+                await _kubernetesClient.DeleteNamespacedIngressAsync(
+                    $"{container.Name.ToLower()}-file-ingress", "default");
+
                 // Delete Ingress
                 await _kubernetesClient.DeleteNamespacedIngressAsync(
                     $"{container.Name.ToLower()}-ingress", "default");
@@ -489,6 +587,10 @@ namespace SuperHeroAPI.Services.ContainerService
                 // Delete Secret
                 await _kubernetesClient.DeleteNamespacedSecretAsync(
                     $"{container.Name.ToLower()}-secrets", "default");
+            
+                // Delete PersistentVolumeClaim for file uploads
+                await _kubernetesClient.DeleteNamespacedPersistentVolumeClaimAsync(
+                    $"{container.Name.ToLower()}-file-pvc", "default");
             }
             catch (Exception ex)
             {

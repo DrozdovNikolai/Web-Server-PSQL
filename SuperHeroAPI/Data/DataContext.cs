@@ -374,7 +374,7 @@ namespace PostgreSQL.Data
                 entity.Property(e => e.UserId).HasColumnName("user_id");
 
                 entity.HasOne(d => d.User).WithOne(p => p.UserAuthToken)
-                    .HasForeignKey<UserAuthToken>(d => d.Id)
+                    .HasForeignKey<UserAuthToken>(d => d.UserId)
                     .OnDelete(DeleteBehavior.ClientSetNull)
                     .HasConstraintName("fk_user_id");
             });

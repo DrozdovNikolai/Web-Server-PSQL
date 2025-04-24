@@ -10,6 +10,7 @@ using SuperHeroAPI.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using System.IdentityModel.Tokens.Jwt;
+using System.Text.RegularExpressions;
 
 namespace SuperHeroAPI.Middleware
 {
@@ -91,17 +92,41 @@ namespace SuperHeroAPI.Middleware
             // Copy the request body
             var requestBodyStream = new MemoryStream();
             var originalRequestBody = context.Request.Body;
-
+            
+            // Check if request is multipart/form-data or for file download
+            var isMultipart = context.Request.ContentType?
+                .StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true;
+            var isFileDownload = context.Request.Path.ToString().Contains("/download/", StringComparison.OrdinalIgnoreCase);
+            var isAuthRequest = context.Request.Path.ToString().Contains("/auth/", StringComparison.OrdinalIgnoreCase);
+            
             try
             {
-                await context.Request.Body.CopyToAsync(requestBodyStream);
-                requestBodyStream.Seek(0, SeekOrigin.Begin);
-                var requestBodyText = await new StreamReader(requestBodyStream).ReadToEndAsync();
-                // Limit request body size to prevent DB issues
-                log.RequestBody = requestBodyText.Length > 10000 ? requestBodyText.Substring(0, 10000) + "..." : requestBodyText;
-
-                requestBodyStream.Seek(0, SeekOrigin.Begin);
-                context.Request.Body = requestBodyStream;
+                if (isMultipart || isFileDownload)
+                {
+                    log.RequestBody = "<binary>";
+                }
+                else
+                {
+                    await context.Request.Body.CopyToAsync(requestBodyStream);
+                    requestBodyStream.Seek(0, SeekOrigin.Begin);
+                    var requestBodyText = await new StreamReader(requestBodyStream).ReadToEndAsync();
+                    
+                    // If it's an auth request, mask password
+                    if (isAuthRequest && !string.IsNullOrEmpty(requestBodyText))
+                    {
+                        // Use regex to mask passwords in JSON
+                        requestBodyText = Regex.Replace(
+                            requestBodyText,
+                            "\"[Pp]assword\"\\s*:\\s*\"[^\"]*\"",
+                            "\"Password\":\"*****\"");
+                    }
+                    
+                    // Limit request body size to prevent DB issues
+                    log.RequestBody = requestBodyText.Length > 10000 ? requestBodyText.Substring(0, 10000) + "..." : requestBodyText;
+                    
+                    requestBodyStream.Seek(0, SeekOrigin.Begin);
+                    context.Request.Body = requestBodyStream;
+                }
 
                 // Capture the response
                 var originalResponseBody = context.Response.Body;
@@ -118,8 +143,20 @@ namespace SuperHeroAPI.Middleware
 
                 responseBodyStream.Seek(0, SeekOrigin.Begin);
                 var responseBodyText = await new StreamReader(responseBodyStream).ReadToEndAsync();
-                // Limit response body size to prevent DB issues
-                log.ResponseBody = responseBodyText.Length > 10000 ? responseBodyText.Substring(0, 10000) + "..." : responseBodyText;
+                
+                // For binary responses or file downloads, just log a placeholder
+                if (context.Response.ContentType != null && 
+                   (context.Response.ContentType.Contains("application/octet-stream") || 
+                    context.Response.ContentType.Contains("application/vnd.openxmlformats") ||
+                    responseBodyText.Length > 1000000)) // Over ~1MB
+                {
+                    log.ResponseBody = "<binary>";
+                }
+                else
+                {
+                    // Limit response body size to prevent DB issues
+                    log.ResponseBody = responseBodyText.Length > 10000 ? responseBodyText.Substring(0, 10000) + "..." : responseBodyText;
+                }
 
                 responseBodyStream.Seek(0, SeekOrigin.Begin);
                 await responseBodyStream.CopyToAsync(originalResponseBody);

@@ -843,6 +843,12 @@ public class QueryController : ControllerBase
 
     private string FormatParameterValue(object value, string dataType)
     {
+        if (dataType == "bytea" && value is byte[] bytes)
+        {
+            // превращаем в decode('hex-строка','hex')
+            var hex = BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+            return $"decode('{hex}', 'hex')";
+        }
         if (value == null || value is DBNull)
         {
             return "NULL";
@@ -1458,7 +1464,201 @@ FROM
             });
         }
     }
+    #region Upload ------------------------------------------------------
 
+    /// <summary>
+    /// Upload a file to the database by calling a user‑supplied stored
+    /// function.  The stored function must have a first parameter of type
+    /// BYTEA (or OID, if you store large objects) and any additional
+    /// parameters that are supplied as JSON in the <c>metadata</c> field.
+    /// </summary>
+    /// <param name="functionName">Name of the PostgreSQL function to call (schema‑qualified).</param>
+    /// <param name="file">The binary file uploaded by the client.</param>
+    /// <param name="metadata">JSON string with extra parameters expected by the function.</param>
+    /// <remarks>
+    /// The request must use <c>multipart/form‑data</c>.  Example curl:
+    /// <code>
+    /// curl -X POST https://host/api/files/upload/public.save_document \ 
+    ///      -H "Authorization: Bearer $TOKEN" \ 
+    ///      -F "file=@Contract.pdf" \ 
+    ///      -F "metadata={\"title\":\"NDA\",\"category\":\"legal\"}" 
+    ///      -H "Content-Type: multipart/form-data"
+    /// </code>
+    /// The middleware checks the function signature at runtime to ensure
+    /// the supplied parameter names match the database definition.
+    /// </remarks>
+    /// 
+    /// <summary>
+    /// Upload a file to the database by calling a user‑supplied stored
+    /// function.  The request **must** be <c>multipart/form-data</c>.
+    /// Swagger will render a native file‑picker because the payload DTO
+    /// contains an <see cref="IFormFile"/> property.
+    /// </summary>
+    [HttpPost("upload/{functionName}")]
+    [Consumes("multipart/form-data")] // ensures OpenAPI sees file upload
+    [RequestSizeLimit(1024 * 1024 * 200)] // 200 MB
+
+    public async Task<IActionResult> UploadAsync(
+        string functionName,
+        [FromForm] UploadPayload payload)
+    {
+        if (payload.File is null || payload.File.Length == 0)
+            return BadRequest(new { success = false, message = "File not provided." });
+
+        // Merge Metadata and JsonParams into a single dictionary -------------------
+        var extraParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        void mergeJson(string? json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return;
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (parsed is null) return;
+            foreach (var kv in parsed)
+                extraParams[kv.Key] = kv.Value!;
+        }
+
+        try
+        {
+            mergeJson(payload.Metadata);
+            mergeJson(payload.JsonParams);
+        }
+        catch (System.Text.Json.JsonException jex)
+        {
+            return BadRequest(new { success = false, message = "Invalid JSON supplied in form fields.", error = jex.Message });
+        }
+
+        // File -> byte[]
+        await using var ms = new MemoryStream();
+        await payload.File.CopyToAsync(ms);
+        var fileBytes = ms.ToArray();
+
+        // Build parameter dictionary
+        var parameters = new Dictionary<string, object>(extraParams, StringComparer.OrdinalIgnoreCase)
+        {
+            ["__uploaded_file__"] = fileBytes
+        };
+
+        var connectionString = _context.Database.GetConnectionString();
+
+        await using var discovery = new NpgsqlConnection(connectionString);
+        await discovery.OpenAsync();
+
+        var paramDefs = await GetFunctionParametersAsync(functionName, discovery);
+        var binaryParamName = paramDefs.First().ParameterName;
+
+        // формируем словарь и закрываем discovery
+        parameters[binaryParamName] = parameters["__uploaded_file__"];
+        parameters.Remove("__uploaded_file__");
+        // ------------------------------------------------------------------
+
+        // 2.  Передаём управление в ExecuteFunction – он сам возьмёт
+        //     singleton-коннект и откроет/закроет его.
+        return await ExecuteFunction(functionName, parameters, "POST");
+    }
+
+    /// <summary>DTO bound from <c>multipart/form-data</c>.</summary>
+    public sealed class UploadPayload
+    {
+
+        public IFormFile File { get; init; } = default!;
+
+        /// <summary>
+        /// Lightweight scalar metadata (title, category, etc.).  Plain string so it shows
+        /// as a simple input in Swagger.
+        /// </summary>
+        public string? Metadata { get; init; }
+
+        /// <summary>
+        /// Arbitrary JSON object with parameters that should be forwarded to the stored
+        /// function (e.g. { "customer_id": 17, "flag": true }).  Supply the value as a
+        /// JSON‑encoded string in this form field – Swagger will treat it as plain text.
+        /// </summary>
+        public string? JsonParams { get; init; }
+    }
+
+
+    #endregion
+
+    #region Download ----------------------------------------------------
+
+    /// <summary>
+    /// Download a file previously saved in the database.  The associated
+    /// stored function must return a composite type with the following
+    /// columns (case‑insensitive):
+    /// <list type="bullet">
+    /// <item><term>data</term> – BYTEA with the file contents.</item>
+    /// <item><term>filename</term> – TEXT suggested file name.</item>
+    /// <item><term>mime</term> – TEXT MIME‑type (optional, defaults to "application/octet-stream").</item>
+    /// </list>
+    /// </summary>
+    /// <param name="functionName">Name of the PostgreSQL function to call (schema‑qualified).</param>
+    /// <param name="jsonParams">Arbitrary JSON matching the remaining function parameters.</param>
+    /// <remarks>
+    /// Example curl:
+    /// <code>
+    /// curl -G https://host/api/files/download/public.get_document \
+    ///      --data-urlencode "jsonParams={\"document_id\":42}" \
+    ///      -H "Authorization: Bearer $TOKEN"
+    /// </code>
+    /// </remarks>
+    [HttpGet("download/{functionName}")]
+    public async Task<IActionResult> DownloadAsync(string functionName,
+                                                  [FromQuery] string jsonParams)
+    {
+        Dictionary<string, object>? parameters = new();
+        if (!string.IsNullOrWhiteSpace(jsonParams))
+        {
+            try
+            {
+                parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(
+                                 jsonParams,
+                                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true }) ?? new();
+            }
+            catch (System.Text.Json.JsonException jex)
+            {
+                return BadRequest(new
+                {
+                    success = false,
+                    message = "Invalid JSON provided.",
+                    error = jex.Message
+                });
+            }
+        }
+
+        var jsonResult = await ExecuteFunction(functionName, parameters!, "GET");
+
+        if (jsonResult is ContentResult c &&
+            (c.StatusCode is null || c.StatusCode == StatusCodes.Status200OK))
+        {
+            try
+            {
+                var dto = System.Text.Json.JsonSerializer.Deserialize<FileEnvelope>(c.Content ?? "{}")!;
+                var data = Convert.FromBase64String(dto.DataBase64);
+                var mime = string.IsNullOrWhiteSpace(dto.Mime) ? "application/octet-stream" : dto.Mime;
+                var name = string.IsNullOrWhiteSpace(dto.FileName) ? "download.bin" : dto.FileName;
+
+                return File(data, mime, name);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Could not deserialize file result.",
+                    error = ex.Message
+                });
+            }
+        }
+
+        /* ←← добавьте этот возврат */
+        return jsonResult;     // передаём вызвавшему коду то, что вернул ExecuteFunction
+    }
+
+    #endregion
+
+
+    private sealed record FileEnvelope(string DataBase64, string FileName, string Mime);
 
     private async Task<List<(string ParameterName, string DataType)>> GetFunctionParametersAsync(string functionName, DbConnection connection)
     {
@@ -1555,7 +1755,19 @@ FROM
             var folderPath = Path.Combine("/var/www/ncatbird.ru/html", "docx");
             if (!Directory.Exists(folderPath))
             {
-                Directory.CreateDirectory(folderPath); // Create directory if it doesn't exist
+                // Create directory with full permissions if it doesn't exist
+                Directory.CreateDirectory(folderPath);
+                
+                // Ensure proper permissions (on Linux systems)
+                try
+                {
+                    // This requires the System.Diagnostics namespace
+                    System.Diagnostics.Process.Start("chmod", $"777 {folderPath}");
+                }
+                catch
+                {
+                    // Ignore chmod errors, as it may not be available on all platforms
+                }
             }
 
             // Generate a unique file name to avoid conflicts
@@ -1568,7 +1780,7 @@ FROM
                 await file.CopyToAsync(stream);
             }
 
-            // Return the file path
+            // Return the file path that will be accessible via the web server
             var fileUrl = $"{Request.Scheme}://{Request.Host}/docx/{fileName}";
             return Ok(new { filePath = fileUrl });
         }

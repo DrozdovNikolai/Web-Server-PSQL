@@ -55,4 +55,11 @@ spec:
           valueFrom:
             secretKeyRef:
               name: superhero-api-secrets
-              key: DB_PASSWORD_USER 
+              key: DB_PASSWORD_USER
+        volumeMounts:
+        - name: file-upload-volume
+          mountPath: /var/www/ncatbird.ru/html
+      volumes:
+      - name: file-upload-volume
+        persistentVolumeClaim:
+          claimName: file-upload-pvc 
