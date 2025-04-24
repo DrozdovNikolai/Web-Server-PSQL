@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: file-access-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /docx/$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /docx(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: superhero-api
+            port:
+              number: 80 

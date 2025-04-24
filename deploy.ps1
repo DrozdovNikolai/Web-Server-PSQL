@@ -26,6 +26,10 @@ kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
 kubectl apply -f k8s-role.yaml
 kubectl apply -f k8s-rolebinding.yaml
+
+kubectl apply -f k8s/persistent-volume.yaml
+kubectl apply -f k8s/persistent-volume-claim.yaml
+kubectl apply -f k8s/file-ingress.yaml
 # Check deployment status
 Write-Host "Checking deployment status..." -ForegroundColor Green
 kubectl get deployments,pods,services,configmaps,secrets -n default
