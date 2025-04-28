@@ -5,7 +5,7 @@ metadata:
   name: superhero-api-role
 rules:
 - apiGroups: [""]
-  resources: ["configmaps", "secrets", "pods", "services"]
+  resources: ["configmaps", "secrets", "pods", "services", "persistentvolumeclaims"]
   verbs: ["create", "get", "list", "update", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
