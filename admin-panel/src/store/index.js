@@ -2,7 +2,7 @@ import { createStore } from 'vuex'
 import axios from 'axios'
 
 // Set the base API URL to use the NodePort service
-const apiUrl = process.env.VUE_APP_API_URL || 'http://localhost:30080/api'
+const apiUrl = process.env.VUE_APP_API_URL || 'https://ncatbird.ru/ums/server/api'
 
 export default createStore({
   state: {
