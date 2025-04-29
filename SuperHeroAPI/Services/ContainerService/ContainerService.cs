@@ -211,7 +211,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                 ["storage"] = new ResourceQuantity("5Gi")
                             }
                         },
-                        StorageClassName = "manual" // Match your storage class
+                        //StorageClassName = null
                     }
                 };
                 await _kubernetesClient.CreateNamespacedPersistentVolumeClaimAsync(pvc, "default");
