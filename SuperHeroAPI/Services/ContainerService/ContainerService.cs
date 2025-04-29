@@ -420,7 +420,8 @@ namespace SuperHeroAPI.Services.ContainerService
                             ["nginx.ingress.kubernetes.io/proxy-connect-timeout"] = "300",
                             ["nginx.ingress.kubernetes.io/proxy-send-timeout"] = "300",
                             ["nginx.ingress.kubernetes.io/proxy-read-timeout"] = "300",
-                            ["nginx.ingress.kubernetes.io/proxy-body-size"] = "10m"
+                            ["nginx.ingress.kubernetes.io/proxy-body-size"] = "10m",
+                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
                         }
                     },
                     Spec = new V1IngressSpec
@@ -469,7 +470,8 @@ namespace SuperHeroAPI.Services.ContainerService
                             ["kubernetes.io/ingress.class"] = "nginx",
                             ["nginx.ingress.kubernetes.io/rewrite-target"] = "/docx/$2",
                             ["nginx.ingress.kubernetes.io/use-regex"] = "true",
-                            ["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m"
+                            ["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m",
+                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
                         }
                     },
                     Spec = new V1IngressSpec
