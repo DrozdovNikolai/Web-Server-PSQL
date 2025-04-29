@@ -167,46 +167,6 @@ builder.Services.AddAuthorization(options =>
 
 var app = builder.Build();
 
-// Create a middleware to rewrite API URLs in Swagger UI
-app.Use(async (context, next) =>
-{
-    var path = context.Request.Path.Value;
-    var method = context.Request.Method;
-    
-    // If this is a request from Swagger UI to the API
-    if (path != null && path.Contains("/api/") && context.Request.Headers.Referer.ToString().Contains("/swagger"))
-    {
-        // Get the referrer URL to determine the base path
-        var referer = context.Request.Headers.Referer.ToString();
-        var uri = new Uri(referer);
-        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        
-        // Extract the base path based on known patterns
-        string basePath = "";
-        if (segments.Length >= 2 && segments[1] == "server")
-        {
-            // Format: /{app}/server/swagger
-            basePath = $"/{segments[0]}/server";
-        }
-        else if (segments.Length >= 4 && segments[1] == "containers" && segments[3] == "server")
-        {
-            // Format: /{app}/containers/{container}/server/swagger
-            basePath = $"/{segments[0]}/containers/{segments[2]}/server";
-        }
-        
-        // Update the request path if needed
-        if (!string.IsNullOrEmpty(basePath) && !path.StartsWith(basePath))
-        {
-            // Modify the path to include the correct base path
-            var apiPath = path.Substring(path.IndexOf("/api/"));
-            var newPath = basePath + apiPath;
-            context.Request.Path = newPath;
-        }
-    }
-    
-    await next();
-});
-
 // Set the base path for the application
 app.UsePathBase("/server");
 app.UseRouting();
@@ -219,133 +179,49 @@ if (true)
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
         
-        // Intercept requests to fix API URLs
-        options.UseRequestInterceptor(@"
-            function(req) {
-                // If this is an API request that starts with /api/
-                if (req.url && req.url.startsWith('/api/')) {
-                    // Get the base path from the current URL (everything before /swagger)
-                    const pathname = window.location.pathname;
-                    const basePath = pathname.substring(0, pathname.indexOf('/swagger'));
-                    
-                    // Replace the URL with the correct path
-                    req.url = basePath + req.url;
-                    console.log('Intercepted request URL:', req.url);
-                }
-                return req;
+        // Add custom JavaScript to force the correct base URL
+        options.UseRequestInterceptor(@"(req) => { 
+            // Get the current URL path
+            const pathParts = window.location.pathname.split('/');
+            let basePath = '';
+            
+            // Handle both URL formats:
+            // 1. /ums/server/swagger/index.html
+            // 2. /ums/containers/tsts8/server/swagger/index.html
+            if (pathParts.length >= 4 && pathParts[2] === 'server' && pathParts[3] === 'swagger') {
+                // Format: /ums/server/swagger
+                basePath = '/' + pathParts[1] + '/server';
+            } 
+            else if (pathParts.length >= 6 && pathParts[2] === 'containers' && pathParts[4] === 'server' && pathParts[5] === 'swagger') {
+                // Format: /ums/containers/tsts8/server/swagger
+                basePath = '/' + pathParts[1] + '/containers/' + pathParts[3] + '/server';
             }
-        ");
-        
-        // Also intercept fetch requests (for older Swagger UI versions)
-        options.HeadContent = @"
-            <script>
-                window.addEventListener('load', function() {
-                    // Store the original fetch function
-                    const originalFetch = window.fetch;
-                    
-                    // Override the fetch function
-                    window.fetch = function(resource, init) {
-                        // First handle absolute API URLs
-                        if (typeof resource === 'string') {
-                            const url = new URL(resource, window.location.origin);
-                            const pathname = window.location.pathname;
-                            
-                            // Check for absolute URLs that need fixing
-                            if (url.pathname.startsWith('/api/')) {
-                                // Get the base path from the current URL
-                                const basePath = pathname.substring(0, pathname.indexOf('/swagger'));
-                                
-                                // Create the new URL with the correct path
-                                url.pathname = basePath + url.pathname;
-                                console.log('Redirecting fetch from', resource, 'to', url.toString());
-                                
-                                // Call the original fetch with the new URL
-                                return originalFetch(url.toString(), init);
-                            }
-                        }
-                        
-                        // For non-API URLs, just use the original fetch
-                        return originalFetch(resource, init);
-                    };
-                    
-                    // Override all button clicks in the Swagger UI
-                    const observer = new MutationObserver(function(mutations) {
-                        document.querySelectorAll('.opblock-summary-control, .try-out__btn').forEach(button => {
-                            if (!button.hasAttribute('url-fixed')) {
-                                button.setAttribute('url-fixed', 'true');
-                                button.addEventListener('click', function() {
-                                    // After a short delay to let the UI update
-                                    setTimeout(function() {
-                                        // Find the execute button and add our handler
-                                        document.querySelectorAll('.execute').forEach(executeBtn => {
-                                            if (!executeBtn.hasAttribute('url-fixed')) {
-                                                executeBtn.setAttribute('url-fixed', 'true');
-                                                executeBtn.addEventListener('click', function() {
-                                                    console.log('Execute button clicked - ensuring URL is correct');
-                                                });
-                                            }
-                                        });
-                                    }, 500);
-                                });
-                            }
-                        });
-                    });
-                    
-                    // Start observing the document
-                    observer.observe(document.documentElement, {
-                        childList: true,
-                        subtree: true
-                    });
-                });
-            </script>
-        ";
+            
+            // If req.url starts with /api/, replace it with the correct base path
+            if (req.url.startsWith('/api/')) {
+                req.url = basePath + req.url;
+            }
+            
+            return req;
+        }");
     });
 }
 app.UseSwagger(options =>
 {
     options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
     {
-        // Extract the path information
+        // Get the current URL path to determine the proper base URL
         string path = httpReq.Path.Value ?? "";
-        string basePath = "";
+        string hostWithScheme = $"{httpReq.Scheme}://{httpReq.Host.Value}";
         
-        // Handle two possible path formats:
-        // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
-        // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
-        var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        // Default server URL
+        var serverUrl = hostWithScheme;
         
-        if (pathSegments.Length >= 2 && pathSegments[1] == "server")
-        {
-            // Format 1: /{app}/server/...
-            basePath = $"/{pathSegments[0]}/server";
-        }
-        else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
-        {
-            // Format 2: /{app}/containers/{container-name}/server/...
-            basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
-        }
-        else
-        {
-            // Default fallback
-            basePath = "/server";
-        }
-        
-        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
+        // Add server URL with the proper base
         swaggerDoc.Servers = new List<OpenApiServer>
         {
             new OpenApiServer { Url = serverUrl }
         };
-        
-        // Update operation paths to ensure they're relative to the server URL
-        // This is crucial for ensuring API requests go to the correct endpoint
-        foreach (var path in swaggerDoc.Paths)
-        {
-            foreach (var operation in path.Value.Operations)
-            {
-                // Add server URL tags that will help client-side JS determine the correct URL
-                operation.Value.Tags.Add(new OpenApiTag { Name = $"server-url:{serverUrl}" });
-            }
-        }
     });
 });
 
