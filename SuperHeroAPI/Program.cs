@@ -175,34 +175,7 @@ if (true)
 {
     app.UseSwagger(options =>
     {
-        options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
-        {
-            // Extract the container name from the path if it exists
-            string path = httpReq.Path.Value ?? "";
-            string basePath = "";
-
-            // Handle two possible path formats:
-            // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
-            // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
-            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-            if (pathSegments.Length >= 2 && pathSegments[1] == "server")
-            {
-                // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}";
-            }
-            else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
-            {
-                // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
-            }
-
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
-            swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new OpenApiServer { Url = serverUrl }
-        };
-        });
+       
     });
     app.UseSwaggerUI(options =>
     {
