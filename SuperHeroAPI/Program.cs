@@ -178,6 +178,12 @@ if (true)
     {
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
+        
+        // Configure SwaggerUI to use the correct base path for API calls
+        options.ConfigObject.Urls = new[] 
+        {
+            new { url = "./v1/swagger.json", name = "SuperHeroAPI V1" }
+        };
     });
 }
 app.UseSwagger(options =>
@@ -210,6 +216,92 @@ app.UseSwagger(options =>
             new OpenApiServer { Url = serverUrl }
         };
     });
+    options.RouteTemplate = "swagger/{documentName}/swagger.json";
+});
+
+// Add middleware to serve custom Swagger assets
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.Value?.Contains("/swagger/index.html") == true)
+    {
+        // Get current path to determine the base URL
+        string path = context.Request.Path.Value ?? "";
+        string basePath = "";
+        
+        var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        
+        if (pathSegments.Length >= 2 && pathSegments[1] == "server")
+        {
+            basePath = $"/{pathSegments[0]}";
+        }
+        else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
+        {
+            basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
+        }
+        
+        // Read the existing response
+        var originalBodyStream = context.Response.Body;
+        using (var responseBody = new MemoryStream())
+        {
+            context.Response.Body = responseBody;
+            
+            await next.Invoke();
+            
+            // Reset the position to the beginning
+            responseBody.Seek(0, SeekOrigin.Begin);
+            var responseBodyText = new StreamReader(responseBody).ReadToEnd();
+            
+            // Inject our custom script to fix base URL
+            var script = $@"
+<script type='text/javascript'>
+    (function() {{
+        // Override fetch and XHR to fix base URLs
+        const basePath = '{basePath}/server';
+        
+        // Store original fetch
+        const originalFetch = window.fetch;
+        window.fetch = function(input, init) {{
+            if (typeof input === 'string' && input.startsWith('/api/')) {{
+                input = basePath + input;
+            }}
+            return originalFetch.call(this, input, init);
+        }};
+        
+        // Store original XMLHttpRequest open
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function(method, url, async, user, password) {{
+            if (typeof url === 'string' && url.startsWith('/api/')) {{
+                url = basePath + url;
+            }}
+            return originalOpen.call(this, method, url, async, user, password);
+        }};
+        
+        // Also fix the SwaggerUI URLs once loaded
+        const checkInterval = setInterval(function() {{
+            if (window.ui) {{
+                clearInterval(checkInterval);
+                console.log('SwaggerUI loaded, fixing URLs');
+                
+                const baseUrl = window.location.protocol + '//' + window.location.host + basePath + '/server';
+                window.ui.specActions.updateBaseUrl(baseUrl);
+            }}
+        }}, 100);
+    }})();
+</script>
+";
+            
+            // Insert our script before the closing </body> tag
+            responseBodyText = responseBodyText.Replace("</body>", script + "</body>");
+            
+            // Write the modified response
+            var modifiedResponseBytes = System.Text.Encoding.UTF8.GetBytes(responseBodyText);
+            context.Response.Body = originalBodyStream;
+            await context.Response.Body.WriteAsync(modifiedResponseBytes, 0, modifiedResponseBytes.Length);
+        }
+        return;
+    }
+    
+    await next.Invoke();
 });
 
 app.UseCors(MyAllowAllOrigins);
