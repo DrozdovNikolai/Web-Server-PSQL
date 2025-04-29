@@ -1,4 +1,4 @@
-global using SuperHeroAPI.Models;
+﻿global using SuperHeroAPI.Models;
 global using PostgreSQL.Data;
 global using Npgsql.EntityFrameworkCore.PostgreSQL;
 
@@ -22,7 +22,7 @@ using SuperHeroAPI.Middleware;
 using SuperHeroAPI.Services;
 using SuperHeroAPI.Services.ContainerService;
 
-// Включаем поддержку устаревшего поведения для timestamp без time zone
+// Р’РєР»СЋС‡Р°РµРј РїРѕРґРґРµСЂР¶РєСѓ СѓСЃС‚Р°СЂРµРІС€РµРіРѕ РїРѕРІРµРґРµРЅРёСЏ РґР»СЏ timestamp Р±РµР· time zone
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // Load environment variables from .env file
@@ -168,7 +168,7 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Set the base path for the application
-app.UsePathBase("/server");
+//app.UsePathBase("/server");
 app.UseRouting();
 
 if (true)
@@ -177,31 +177,27 @@ if (true)
     {
         options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
-            // Extract the container name from the path if it exists
-            string path = httpReq.Path.Value ?? "";
+            // figure out which “ums” or “ums/containers/…/server” prefix we’re on
+            var path = httpReq.Path.Value ?? "";
+            var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
             string basePath = "";
-
-            // Handle two possible path formats:
-            // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
-            // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
-            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-            if (pathSegments.Length >= 2 && pathSegments[1] == "server")
+            if (seg.Length >= 2 && seg[1] == "server")
             {
-                // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}";
+                // e.g. /ums/server/v1/swagger.json
+                basePath = $"/{seg[0]}";
             }
-            else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
+            else if (seg.Length >= 4 && seg[1] == "containers" && seg[3] == "server")
             {
-                // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
+                // e.g. /ums/containers/tsts8/server/v1/swagger.json
+                basePath = $"/{seg[0]}/containers/{seg[2]}";
             }
 
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
+            // ⚠️ IMPORTANT: **no** scheme/host here
             swaggerDoc.Servers = new List<OpenApiServer>
-            {
-                new OpenApiServer { Url = $"{basePath}/server" }
-            };
+        {
+            new OpenApiServer { Url = $"{basePath}/server" }
+        };
         });
     });
     app.UseSwaggerUI(options =>
