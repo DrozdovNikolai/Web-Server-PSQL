@@ -175,8 +175,6 @@ if (true)
 {
     app.UseSwagger(options =>
     {
-        options.RouteTemplate = "swagger/{documentName}/swagger.json";
-        
         options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
             // Extract the container name from the path if it exists
@@ -191,59 +189,47 @@ if (true)
             if (pathSegments.Length >= 2 && pathSegments[1] == "server")
             {
                 // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}";
+                basePath = $"/{pathSegments[0]}/server";
             }
             else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
             {
                 // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
             }
 
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
             swaggerDoc.Servers = new List<OpenApiServer>
             {
                 new OpenApiServer { Url = serverUrl }
             };
         });
     });
-
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("v1/swagger.json", "SuperHeroAPI V1");
+        options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
-        
-        // Add DocExpansion to show all endpoints expanded
-        options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
-        
-        // Add custom JavaScript to fix API URLs
+
+        // This enables the use of the base path in API requests
+        options.EnableDeepLinking();
+        options.DisplayRequestDuration();
+
+        // Add custom JavaScript to fix the URL paths in Swagger UI
         options.HeadContent = @"
-            <script>
-                window.onload = function() {
-                    // Fix for Swagger UI's client URLs when running under container path
-                    const oldFetch = window.fetch;
-                    window.fetch = function(url, init) {
-                        if (typeof url === 'string' && url.includes('/api/')) {
-                            // Check if we're in a container URL
-                            if (window.location.pathname.includes('/containers/')) {
-                                const segments = window.location.pathname.split('/');
-                                if (segments.length >= 4) {
-                                    const containerPath = `/${segments[1]}/containers/${segments[3]}`;
-                                    // Only modify URLs that don't already include the container path
-                                    if (!url.startsWith(containerPath)) {
-                                        url = url.replace('/server', `${containerPath}/server`);
-                                    }
-                                }
-                            } else if (window.location.pathname.includes('/server/')) {
-                                const appSegment = window.location.pathname.split('/')[1];
-                                // Only modify URLs that don't already include the app path
-                                if (!url.startsWith(`/${appSegment}`)) {
-                                    url = url.replace('/server', `/${appSegment}/server`);
-                                }
-                            }
+            <script type='text/javascript'>
+                const originalFetch = window.fetch;
+                window.fetch = function(url, init) {
+                    // If this is a relative URL and doesn't already have the correct prefix
+                    if (url && typeof url === 'string' && url.startsWith('/server/')) {
+                        // Get the base URL from the Swagger servers config
+                        const basePathElement = document.querySelector('.servers select option');
+                        if (basePathElement) {
+                            const basePath = basePathElement.value;
+                            
+                            // Replace /server/ with the actual base path
+                            url = url.replace('/server/', basePath.endsWith('/') ? '' : '/');
                         }
-                        
-                        return oldFetch.call(window, url, init);
-                    };
+                    }
+                    return originalFetch(url, init);
                 };
             </script>";
     });
