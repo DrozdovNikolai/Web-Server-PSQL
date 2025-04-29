@@ -1,0 +1,22 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tsts6-file-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /docx/$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"  # Disable SSL redirect for this ingress
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /tsts6/docx(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: tsts6
+            port:
+              number: 80 
