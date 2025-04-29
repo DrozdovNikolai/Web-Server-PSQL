@@ -186,16 +186,25 @@ app.UseSwagger(options =>
     {
         // Extract the container name from the path if it exists
         string path = httpReq.Path.Value ?? "";
-        string containerPath = "";
+        string basePath = "";
         
-        // Path format will be /{container-name}/server/swagger/...
+        // Handle two possible path formats:
+        // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
+        // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
         var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        
         if (pathSegments.Length >= 2 && pathSegments[1] == "server")
         {
-            containerPath = $"/{pathSegments[0]}";
+            // Format 1: /{app}/server/...
+            basePath = $"/{pathSegments[0]}";
+        }
+        else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
+        {
+            // Format 2: /{app}/containers/{container-name}/server/...
+            basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
         }
         
-        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{containerPath}/server";
+        var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
         swaggerDoc.Servers = new List<OpenApiServer>
         {
             new OpenApiServer { Url = serverUrl }
