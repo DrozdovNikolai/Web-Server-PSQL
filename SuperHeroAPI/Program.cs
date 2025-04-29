@@ -168,7 +168,7 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Set the base path for the application
-app.UsePathBase("/server");
+app.UsePathBase("/ums");
 app.UseRouting();
 
 if (true)
@@ -189,109 +189,25 @@ if (true)
             if (pathSegments.Length >= 2 && pathSegments[1] == "server")
             {
                 // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}/server";
+                basePath = $"/{pathSegments[0]}";
             }
             else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
             {
                 // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
             }
 
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
             swaggerDoc.Servers = new List<OpenApiServer>
-            {
-                new OpenApiServer { Url = serverUrl }
-            };
+        {
+            new OpenApiServer { Url = serverUrl }
+        };
         });
     });
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
-
-        // This enables the use of the base path in API requests
-        options.EnableDeepLinking();
-        options.DisplayRequestDuration();
-
-        // Add custom JavaScript to fix the URL paths in Swagger UI
-        options.HeadContent = @"
-            <script type='text/javascript'>
-                (function() {
-                    // Wait for Swagger UI to fully load
-                    window.addEventListener('load', function() {
-                        // Give the UI a moment to initialize
-                        setTimeout(function() {
-                            // Get the current URL path
-                            const currentPath = window.location.pathname;
-                            
-                            // Extract the base path from the current URL
-                            let basePath = '';
-                            
-                            // Check if we're in a container-specific path or app path
-                            if (currentPath.includes('/containers/')) {
-                                // Format: /{app}/containers/{container-name}/server/swagger/...
-                                const match = currentPath.match(/^(\/[^\/]+\/containers\/[^\/]+\/server)/);
-                                if (match) basePath = match[1];
-                            } else {
-                                // Format: /{app}/server/swagger/...
-                                const match = currentPath.match(/^(\/[^\/]+\/server)/);
-                                if (match) basePath = match[1];
-                            }
-
-                            console.log('Detected base path:', basePath);
-                            
-                            // Create a proxy for fetch to rewrite URLs
-                            const originalFetch = window.fetch;
-                            window.fetch = function(resource, options) {
-                                if (typeof resource === 'string') {
-                                    // If the URL starts with /api/ and we have a base path
-                                    if (resource.startsWith('/api/') && basePath) {
-                                        resource = basePath + resource;
-                                        console.log('Rewritten URL:', resource);
-                                    }
-                                    // If the URL starts with /server/api/ and we have a base path
-                                    else if (resource.startsWith('/server/api/') && basePath) {
-                                        resource = basePath + resource.substring('/server'.length);
-                                        console.log('Rewritten URL:', resource);
-                                    }
-                                }
-                                return originalFetch(resource, options);
-                            };
-                            
-                            // Also update any existing links in the DOM
-                            const updateLinks = function() {
-                                if (!basePath) return;
-                                
-                                // Find all request URL inputs
-                                const urlInputs = document.querySelectorAll('input.opblock-input');
-                                urlInputs.forEach(input => {
-                                    if (input.value.startsWith('/api/') || input.value.startsWith('/server/api/')) {
-                                        if (input.value.startsWith('/api/')) {
-                                            input.value = basePath + input.value;
-                                        } else {
-                                            input.value = basePath + input.value.substring('/server'.length);
-                                        }
-                                    }
-                                });
-                            };
-                            
-                            // Run initially
-                            updateLinks();
-                            
-                            // Set up a mutation observer to detect when new API operations are expanded
-                            const observer = new MutationObserver(function(mutations) {
-                                updateLinks();
-                            });
-                            
-                            // Start observing the document
-                            observer.observe(document.body, { 
-                                childList: true, 
-                                subtree: true 
-                            });
-                        }, 1000); // Wait 1 second for the UI to initialize
-                    });
-                })();
-            </script>";
     });
 }
 
