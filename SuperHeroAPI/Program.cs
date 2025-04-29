@@ -175,6 +175,8 @@ if (true)
 {
     app.UseSwagger(options =>
     {
+        options.RouteTemplate = "swagger/{documentName}/swagger.json";
+        
         options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
             // Extract the container name from the path if it exists
@@ -204,17 +206,46 @@ if (true)
             };
         });
     });
+
     app.UseSwaggerUI(options =>
     {
-        options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
+        options.SwaggerEndpoint("v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
         
         // Add DocExpansion to show all endpoints expanded
         options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
         
-        // Override the default URL generator to include basePath
-        options.ConfigObject.AdditionalItems.Add("serverUrl", ""); // Will be set by custom JS
-        options.UseRequestInterceptor("(req) => { const url = new URL(req.url); if (window.location.pathname.includes('/containers/')) { const segments = window.location.pathname.split('/'); const containerPath = `/${segments[1]}/containers/${segments[3]}`; url.pathname = `${containerPath}/server${url.pathname.substring('/server'.length)}`; } else if (window.location.pathname.includes('/server/')) { const appSegment = window.location.pathname.split('/')[1]; url.pathname = `/${appSegment}/server${url.pathname.substring('/server'.length)}`; } req.url = url.toString(); return req; }");
+        // Add custom JavaScript to fix API URLs
+        options.HeadContent = @"
+            <script>
+                window.onload = function() {
+                    // Fix for Swagger UI's client URLs when running under container path
+                    const oldFetch = window.fetch;
+                    window.fetch = function(url, init) {
+                        if (typeof url === 'string' && url.includes('/api/')) {
+                            // Check if we're in a container URL
+                            if (window.location.pathname.includes('/containers/')) {
+                                const segments = window.location.pathname.split('/');
+                                if (segments.length >= 4) {
+                                    const containerPath = `/${segments[1]}/containers/${segments[3]}`;
+                                    // Only modify URLs that don't already include the container path
+                                    if (!url.startsWith(containerPath)) {
+                                        url = url.replace('/server', `${containerPath}/server`);
+                                    }
+                                }
+                            } else if (window.location.pathname.includes('/server/')) {
+                                const appSegment = window.location.pathname.split('/')[1];
+                                // Only modify URLs that don't already include the app path
+                                if (!url.startsWith(`/${appSegment}`)) {
+                                    url = url.replace('/server', `/${appSegment}/server`);
+                                }
+                            }
+                        }
+                        
+                        return oldFetch.call(window, url, init);
+                    };
+                };
+            </script>";
     });
 }
 
