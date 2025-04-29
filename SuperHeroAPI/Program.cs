@@ -173,57 +173,75 @@ app.UseRouting();
 
 if (true)
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(options =>
+    app.UseSwagger(c =>
     {
-        options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
-        options.RoutePrefix = "swagger";
+        c.RouteTemplate = "swagger/{documentName}/swagger.json";
+        c.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+        {
+            // Extract the full request path
+            string path = httpReq.Path.Value ?? "";
+            string basePath = "";
+            
+            // Extract base path from request URL 
+            // Handle two possible path formats:
+            // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
+            // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
+            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            
+            if (pathSegments.Length >= 2 && pathSegments[1] == "server")
+            {
+                // Format 1: /{app}/server/...
+                basePath = $"/{pathSegments[0]}/server";
+            }
+            else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
+            {
+                // Format 2: /{app}/containers/{container-name}/server/...
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
+            }
+            
+            // Set the server URL with full path
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
+            swaggerDoc.Servers = new List<OpenApiServer> { new OpenApiServer { Url = serverUrl } };
+            
+            // Make sure all paths are prefixed correctly
+            var paths = swaggerDoc.Paths.ToList();
+            swaggerDoc.Paths.Clear();
+            
+            // Ensure all API paths include the correct base path
+            foreach (var path in paths)
+            {
+                // Already starts with /api, no need to add
+                swaggerDoc.Paths.Add(path.Key, path.Value);
+            }
+        });
+    });
+    
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
+        c.RoutePrefix = "swagger";
+        c.DocumentTitle = "SuperHeroAPI";
         
-        // Add custom JavaScript to force the correct base URL
-        options.UseRequestInterceptor(@"(req) => { 
-            // Get the current URL path
-            const pathParts = window.location.pathname.split('/');
-            let basePath = '';
-            
-            // Handle both URL formats:
-            // 1. /ums/server/swagger/index.html
-            // 2. /ums/containers/tsts8/server/swagger/index.html
-            if (pathParts.length >= 4 && pathParts[2] === 'server' && pathParts[3] === 'swagger') {
-                // Format: /ums/server/swagger
-                basePath = '/' + pathParts[1] + '/server';
-            } 
-            else if (pathParts.length >= 6 && pathParts[2] === 'containers' && pathParts[4] === 'server' && pathParts[5] === 'swagger') {
-                // Format: /ums/containers/tsts8/server/swagger
-                basePath = '/' + pathParts[1] + '/containers/' + pathParts[3] + '/server';
-            }
-            
-            // If req.url starts with /api/, replace it with the correct base path
-            if (req.url.startsWith('/api/')) {
-                req.url = basePath + req.url;
-            }
-            
-            return req;
-        }");
+        // Add custom JavaScript to modify Swagger UI behavior
+        c.HeadContent = @"
+            <script>
+                // Override Swagger UI's URL handling to respect the base path
+                window.addEventListener('load', function() {
+                    setTimeout(function() {
+                        const baseUrl = window.location.pathname.split('/swagger')[0];
+                        // Override fetch to ensure all requests use the correct base path
+                        const originalFetch = window.fetch;
+                        window.fetch = function(url, options) {
+                            if (url.startsWith('/api/')) {
+                                url = baseUrl + url;
+                            }
+                            return originalFetch(url, options);
+                        };
+                    }, 500);
+                });
+            </script>";
     });
 }
-app.UseSwagger(options =>
-{
-    options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
-    {
-        // Get the current URL path to determine the proper base URL
-        string path = httpReq.Path.Value ?? "";
-        string hostWithScheme = $"{httpReq.Scheme}://{httpReq.Host.Value}";
-        
-        // Default server URL
-        var serverUrl = hostWithScheme;
-        
-        // Add server URL with the proper base
-        swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new OpenApiServer { Url = serverUrl }
-        };
-    });
-});
 
 app.UseCors(MyAllowAllOrigins);
 app.UseHttpsRedirection();
