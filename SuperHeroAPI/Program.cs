@@ -168,19 +168,48 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Set the base path for the application
-app.UsePathBase("/ums");
+app.UsePathBase("/server");
 app.UseRouting();
 
 if (true)
 {
     app.UseSwagger(options =>
     {
-       
+        options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
+        {
+            // Extract the container name from the path if it exists
+            string path = httpReq.Path.Value ?? "";
+            string basePath = "";
+
+            // Handle two possible path formats:
+            // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
+            // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
+            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (pathSegments.Length >= 2 && pathSegments[1] == "server")
+            {
+                // Format 1: /{app}/server/...
+                basePath = $"/{pathSegments[0]}/server";
+            }
+            else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
+            {
+                // Format 2: /{app}/containers/{container-name}/server/...
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
+            }
+
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
+            swaggerDoc.Servers = new List<OpenApiServer>
+            {
+                new OpenApiServer { Url = serverUrl }
+            };
+        });
     });
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
+        options.EnableDeepLinking();
+        options.DisplayRequestDuration();
     });
 }
 
