@@ -1,11 +1,10 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
-  namespace: default
   name: superhero-api-role
 rules:
 - apiGroups: [""]
-  resources: ["configmaps", "secrets", "pods", "services", "persistentvolumeclaims"]
+  resources: ["configmaps", "secrets", "pods", "services", "persistentvolumeclaims", "nodes"]
   verbs: ["create", "get", "list", "update", "delete"]
 - apiGroups: ["apps"]
   resources: ["deployments"]
