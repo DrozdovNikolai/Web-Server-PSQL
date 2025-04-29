@@ -597,7 +597,7 @@ namespace SuperHeroAPI.Services.ContainerService
                 _logger.LogError(ex, "Error deleting from Kubernetes");
                 throw;
             }
-        }m
+        }
 
         private async Task RestartKubernetesDeployment(Container container)
         {
