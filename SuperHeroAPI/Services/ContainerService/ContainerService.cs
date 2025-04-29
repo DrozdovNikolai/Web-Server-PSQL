@@ -396,7 +396,7 @@ namespace SuperHeroAPI.Services.ContainerService
                         {
                             new V1ServicePort
                             {
-                                Port = 80,
+                                Port = 81,
                                 TargetPort = 8080
                             }
                         },
@@ -445,7 +445,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                                     Name = container.Name.ToLower(),
                                                     Port = new V1ServiceBackendPort
                                                     {
-                                                        Number = 80
+                                                        Number = 81
                                                     }
                                                 }
                                             }
@@ -495,7 +495,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                                     Name = container.Name.ToLower(),
                                                     Port = new V1ServiceBackendPort
                                                     {
-                                                        Number = 80
+                                                        Number = 81
                                                     }
                                                 }
                                             }
