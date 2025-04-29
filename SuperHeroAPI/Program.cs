@@ -45,7 +45,7 @@ builder.Services.AddCors(options =>
 });
 
 // Add services to the container.
-var mvcBuilder= builder.Services.AddControllersWithViews();
+var mvcBuilder = builder.Services.AddControllersWithViews();
 builder.Services.AddControllers();
 builder.Services.AddHttpContextAccessor();
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
@@ -160,7 +160,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("AuditoriumsPolicy", policy =>
         policy.RequireAssertion(context =>
         {
-           
+
             return context.User.HasClaim(claim => claim.Type == "Permission" && claim.Value == "dickandballs");
         }));
 });
@@ -168,7 +168,7 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Set the base path for the application
-//app.UsePathBase("/server");
+app.UsePathBase("/server");
 app.UseRouting();
 
 if (true)
@@ -177,33 +177,44 @@ if (true)
     {
         options.PreSerializeFilters.Add((swaggerDoc, httpReq) =>
         {
-            // figure out which “ums” or “ums/containers/…/server” prefix we’re on
-            var path = httpReq.Path.Value ?? "";
-            var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-
+            // Extract the container name from the path if it exists
+            string path = httpReq.Path.Value ?? "";
             string basePath = "";
-            if (seg.Length >= 2 && seg[1] == "server")
+
+            // Handle two possible path formats:
+            // 1. /{app}/server/swagger/... (e.g., /ums/server/swagger)
+            // 2. /{app}/containers/{container-name}/server/swagger/... (e.g., /ums/containers/tsts8/server/swagger)
+            var pathSegments = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (pathSegments.Length >= 2 && pathSegments[1] == "server")
             {
-                // e.g. /ums/server/v1/swagger.json
-                basePath = $"/{seg[0]}";
+                // Format 1: /{app}/server/...
+                basePath = $"/{pathSegments[0]}";
             }
-            else if (seg.Length >= 4 && seg[1] == "containers" && seg[3] == "server")
+            else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
             {
-                // e.g. /ums/containers/tsts8/server/v1/swagger.json
-                basePath = $"/{seg[0]}/containers/{seg[2]}";
+                // Format 2: /{app}/containers/{container-name}/server/...
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
             }
 
-            // ⚠️ IMPORTANT: **no** scheme/host here
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
             swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new OpenApiServer { Url = $"{basePath}/server" }
-        };
+            {
+                new OpenApiServer { Url = serverUrl }
+            };
         });
     });
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
+        
+        // Add DocExpansion to show all endpoints expanded
+        options.DocExpansion(Swashbuckle.AspNetCore.SwaggerUI.DocExpansion.None);
+        
+        // Override the default URL generator to include basePath
+        options.ConfigObject.AdditionalItems.Add("serverUrl", ""); // Will be set by custom JS
+        options.UseRequestInterceptor("(req) => { const url = new URL(req.url); if (window.location.pathname.includes('/containers/')) { const segments = window.location.pathname.split('/'); const containerPath = `/${segments[1]}/containers/${segments[3]}`; url.pathname = `${containerPath}/server${url.pathname.substring('/server'.length)}`; } else if (window.location.pathname.includes('/server/')) { const appSegment = window.location.pathname.split('/')[1]; url.pathname = `/${appSegment}/server${url.pathname.substring('/server'.length)}`; } req.url = url.toString(); return req; }");
     });
 }
 
