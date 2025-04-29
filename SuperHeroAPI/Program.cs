@@ -168,7 +168,7 @@ builder.Services.AddAuthorization(options =>
 var app = builder.Build();
 
 // Set the base path for the application
-//app.UsePathBase("/server");
+app.UsePathBase("/server");
 app.UseRouting();
 
 if (true)
@@ -199,9 +199,9 @@ if (true)
 
             var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
             swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new OpenApiServer { Url = serverUrl }
-        };
+            {
+                new OpenApiServer { Url = $"{basePath}/server" }
+            };
         });
     });
     app.UseSwaggerUI(options =>
