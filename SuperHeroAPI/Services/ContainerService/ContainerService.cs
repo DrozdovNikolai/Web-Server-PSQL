@@ -211,7 +211,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                 ["storage"] = new ResourceQuantity("5Gi")
                             }
                         },
-                        StorageClassName = "manual" // Match your storage class
+                        StorageClassName = null // Match your storage class
                     }
                 };
                 await _kubernetesClient.CreateNamespacedPersistentVolumeClaimAsync(pvc, "default");
@@ -597,7 +597,7 @@ namespace SuperHeroAPI.Services.ContainerService
                 _logger.LogError(ex, "Error deleting from Kubernetes");
                 throw;
             }
-        }
+        }m
 
         private async Task RestartKubernetesDeployment(Container container)
         {
