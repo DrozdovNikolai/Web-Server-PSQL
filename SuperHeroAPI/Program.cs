@@ -189,19 +189,19 @@ if (true)
             if (pathSegments.Length >= 2 && pathSegments[1] == "server")
             {
                 // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}";
+                basePath = $"/{pathSegments[0]}/server";
             }
             else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
             {
                 // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
             }
 
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
             swaggerDoc.Servers = new List<OpenApiServer>
-        {
-            new OpenApiServer { Url = serverUrl }
-        };
+            {
+                new OpenApiServer { Url = serverUrl }
+            };
         });
     });
     app.UseSwaggerUI(options =>
