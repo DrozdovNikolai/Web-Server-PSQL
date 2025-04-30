@@ -206,29 +206,31 @@ namespace PostgreSQL.Data
 
             modelBuilder.Entity<GlobalPermission>(entity =>
             {
-                entity.HasKey(e => e.Id).HasName("pk_globalpermissions");
+                entity.HasKey(e => e.PermissionId).HasName("ums_globalpermissions_pkey");
 
                 entity.ToTable("ums_globalpermissions", "ums");
 
-                entity.Property(e => e.Id).HasColumnName("permission_id");
+                entity.HasIndex(e => new { e.RoleId, e.SchemaName }, "uq_role_schema").IsUnique();
+
+                entity.Property(e => e.PermissionId).HasColumnName("permission_id");
                 entity.Property(e => e.CreateGrant)
                     .HasDefaultValue(false)
-                    .HasColumnName("create_grant");
+                    .HasColumnName("grant_create_db");
                 entity.Property(e => e.CreateTableGrant)
                     .HasDefaultValue(false)
-                    .HasColumnName("create_table_grant");
+                    .HasColumnName("grant_create_obj");
                 entity.Property(e => e.DeleteTableGrant)
                     .HasDefaultValue(false)
-                    .HasColumnName("delete_table_grant");
-                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                    .HasColumnName("grant_delete_tbl");
                 entity.Property(e => e.UpdateTableGrant)
                     .HasDefaultValue(false)
-                    .HasColumnName("update_table_grant");
+                    .HasColumnName("grant_update_tbl");
+                entity.Property(e => e.RoleId).HasColumnName("role_id");
+                entity.Property(e => e.SchemaName).HasColumnName("schema_name");
 
                 entity.HasOne(d => d.Role).WithMany(p => p.GlobalPermissions)
                     .HasForeignKey(d => d.RoleId)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("fk_role_id");
+                    .HasConstraintName("ums_globalpermissions_role_id_fkey");
             });
 
             modelBuilder.Entity<Permission>(entity =>

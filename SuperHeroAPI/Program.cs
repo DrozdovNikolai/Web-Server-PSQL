@@ -189,27 +189,25 @@ if (true)
             if (pathSegments.Length >= 2 && pathSegments[1] == "server")
             {
                 // Format 1: /{app}/server/...
-                basePath = $"/{pathSegments[0]}/server";
+                basePath = $"/{pathSegments[0]}";
             }
             else if (pathSegments.Length >= 4 && pathSegments[1] == "containers" && pathSegments[3] == "server")
             {
                 // Format 2: /{app}/containers/{container-name}/server/...
-                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}/server";
+                basePath = $"/{pathSegments[0]}/containers/{pathSegments[2]}";
             }
 
-            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}";
+            var serverUrl = $"{httpReq.Scheme}://{httpReq.Host.Value}{basePath}/server";
             swaggerDoc.Servers = new List<OpenApiServer>
-            {
-                new OpenApiServer { Url = serverUrl }
-            };
+        {
+            new OpenApiServer { Url = serverUrl }
+        };
         });
     });
     app.UseSwaggerUI(options =>
     {
         options.SwaggerEndpoint("./v1/swagger.json", "SuperHeroAPI V1");
         options.RoutePrefix = "swagger";
-        options.EnableDeepLinking();
-        options.DisplayRequestDuration();
     });
 }
 

@@ -117,6 +117,36 @@ namespace SuperHeroAPI.Services
                         Console.WriteLine("UMS schema already exists.");
                     }
 
+
+
+                    // 1) tell Postgres to treat us like a replica (user triggers won’t fire)
+                    using (var disable = connection.CreateCommand())
+                    {
+                        disable.CommandText = "SET session_replication_role = 'replica';";
+                        await disable.ExecuteNonQueryAsync(cancellationToken);
+                    }
+
+                    // 2) bulk-insert every existing pg_roles entry into your ums_roles table,
+                    //    skipping Postgres system roles and avoiding duplicates
+                    using (var seed = connection.CreateCommand())
+                    {
+                        seed.CommandText = @"
+        INSERT INTO ums.ums_roles (role_name)
+        SELECT rolname
+          FROM pg_roles
+         WHERE rolname NOT LIKE 'pg\\_%'     -- skip system roles
+           AND rolname NOT IN (SELECT role_name FROM ums.ums_roles)
+    ";
+                        await seed.ExecuteNonQueryAsync(cancellationToken);
+                    }
+
+                    // 3) turn triggers back on so future inserts will still fire the create_role trigger
+                    using (var enable = connection.CreateCommand())
+                    {
+                        enable.CommandText = "SET session_replication_role = 'origin';";
+                        await enable.ExecuteNonQueryAsync(cancellationToken);
+                    }
+
                     // Check if we need to create a superuser
                     // Create superuser role if it doesn't exist
                     var adminRole = await dbContext.Roles.FirstOrDefaultAsync(r => r.RoleName == "superadmin", cancellationToken);

@@ -7,22 +7,23 @@ namespace SuperHeroAPI.Models
     public class GlobalPermission
     {
         [Key]
-        [Column("id")]
-        public int Id { get; set; }
-        
+        [Column("permission_id")]
+        public int PermissionId { get; set; }
+        [Column("schema_name")]
+        public string SchemaName { get; set; } = null!;
         [Column("role_id")]
         public int RoleId { get; set; }
         
-        [Column("create_table_grant")]
+        [Column("grant_create_obj")]
         public bool CreateTableGrant { get; set; }
         
-        [Column("update_table_grant")]
+        [Column("grant_update_tbl")]
         public bool UpdateTableGrant { get; set; }
         
-        [Column("delete_table_grant")]
+        [Column("grant_delete_tbl")]
         public bool DeleteTableGrant { get; set; }
         
-        [Column("create_grant")]
+        [Column("grant_create_db")]
         public bool CreateGrant { get; set; }
         
         [ForeignKey("RoleId")]
