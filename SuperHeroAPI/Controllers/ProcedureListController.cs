@@ -754,7 +754,9 @@ public async Task<IActionResult> CreateTableFromSql([FromBody] string sql)
 
                 _context.TableUsers.Add(new TableUser
                 {
-                    Tablename = fullTable,
+                    Tablename = schema != null
+                    ? $"{(schema)}.{(table)}"
+                    : (table),
                     UserId = user.Id
                 });
                 await _context.SaveChangesAsync();
