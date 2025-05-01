@@ -25,61 +25,50 @@ namespace SuperHeroAPI.Middleware
 
         public async Task InvokeAsync(HttpContext context)
         {
-            // Don't log requests to Swagger UI
+            // Don't log Swagger requests
             if (context.Request.Path.StartsWithSegments("/swagger"))
             {
                 await _next(context);
                 return;
             }
 
-            // Get UserId from JWT token
-            int? userId = null;
+            // Попытаться достать username из JWT
             string? username = null;
-
-            // Try to get the JWT token
             var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
             if (!string.IsNullOrEmpty(authHeader) && authHeader.StartsWith("Bearer "))
             {
-                var token = authHeader.Substring("Bearer ".Length).Trim();
-                
+                var token = authHeader["Bearer ".Length..].Trim();
                 try
                 {
-                    // Parse the JWT token
-                    var tokenHandler = new JwtSecurityTokenHandler();
-                    if (tokenHandler.CanReadToken(token))
+                    var handler = new JwtSecurityTokenHandler();
+                    if (handler.CanReadToken(token))
                     {
-                        var jwtToken = tokenHandler.ReadJwtToken(token);
-                        
-                        // Try to get username from claims
-                        username = jwtToken.Claims.FirstOrDefault(c => c.Type == "username" || c.Type == JwtRegisteredClaimNames.Sub)?.Value;
-                        
-                        // If still no username, check other common claim types
+                        var jwt = handler.ReadJwtToken(token);
+                        username = jwt.Claims.FirstOrDefault(c => c.Type == "username" || c.Type == JwtRegisteredClaimNames.Sub)?.Value;
                         if (string.IsNullOrEmpty(username))
                         {
-                            username = jwtToken.Claims.FirstOrDefault(c => 
-                                c.Type == ClaimTypes.Name || 
-                                c.Type == ClaimTypes.NameIdentifier || 
-                                c.Type == "unique_name" || 
+                            username = jwt.Claims.FirstOrDefault(c =>
+                                c.Type == ClaimTypes.Name ||
+                                c.Type == ClaimTypes.NameIdentifier ||
+                                c.Type == "unique_name" ||
                                 c.Type == "name")?.Value;
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    // If token parsing fails, log the error but continue
                     Console.WriteLine($"Error parsing JWT token: {ex.Message}");
                 }
             }
 
-            // If no username from token, try from identity
             if (string.IsNullOrEmpty(username) && context.User.Identity?.IsAuthenticated == true)
             {
-                username = context.User.Identity.Name ??
-                           context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value ??
-                           context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
+                username = context.User.Identity?.Name
+                        ?? context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.Name)?.Value
+                        ?? context.User.Claims.FirstOrDefault(c => c.Type == ClaimTypes.NameIdentifier)?.Value;
             }
 
-            // Create log entry
+            // Собираем лог-запись
             var log = new RequestLog
             {
                 Method = context.Request.Method,
@@ -89,16 +78,13 @@ namespace SuperHeroAPI.Middleware
                 RequestTime = DateTime.UtcNow
             };
 
-            // Copy the request body
+            // Читаем тело запроса (маскирование пароля при ауте)...
             var requestBodyStream = new MemoryStream();
             var originalRequestBody = context.Request.Body;
-            
-            // Check if request is multipart/form-data or for file download
-            var isMultipart = context.Request.ContentType?
-                .StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true;
-            var isFileDownload = context.Request.Path.ToString().Contains("/download/", StringComparison.OrdinalIgnoreCase);
-            var isAuthRequest = context.Request.Path.ToString().Contains("/auth/", StringComparison.OrdinalIgnoreCase);
-            
+            var isMultipart = context.Request.ContentType?.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase) == true;
+            var isFileDownload = context.Request.Path.Value?.Contains("/download/", StringComparison.OrdinalIgnoreCase) == true;
+            var isAuthRequest = context.Request.Path.Value?.Contains("/auth/", StringComparison.OrdinalIgnoreCase) == true;
+
             try
             {
                 if (isMultipart || isFileDownload)
@@ -108,96 +94,80 @@ namespace SuperHeroAPI.Middleware
                 else
                 {
                     await context.Request.Body.CopyToAsync(requestBodyStream);
-                    requestBodyStream.Seek(0, SeekOrigin.Begin);
-                    var requestBodyText = await new StreamReader(requestBodyStream).ReadToEndAsync();
-                    
-                    // If it's an auth request, mask password
-                    if (isAuthRequest && !string.IsNullOrEmpty(requestBodyText))
+                    requestBodyStream.Position = 0;
+                    var text = await new StreamReader(requestBodyStream).ReadToEndAsync();
+
+                    if (isAuthRequest && !string.IsNullOrEmpty(text))
                     {
-                        // Use regex to mask passwords in JSON
-                        requestBodyText = Regex.Replace(
-                            requestBodyText,
-                            "\"[Pp]assword\"\\s*:\\s*\"[^\"]*\"",
-                            "\"Password\":\"*****\"");
+                        text = Regex.Replace(text, "\"[Pp]assword\"\\s*:\\s*\"[^\"]*\"", "\"Password\":\"*****\"");
                     }
-                    
-                    // Limit request body size to prevent DB issues
-                    log.RequestBody = requestBodyText.Length > 10000 ? requestBodyText.Substring(0, 10000) + "..." : requestBodyText;
-                    
-                    requestBodyStream.Seek(0, SeekOrigin.Begin);
+
+                    log.RequestBody = text.Length > 10000 ? text[..10000] + "..." : text;
+
+                    requestBodyStream.Position = 0;
                     context.Request.Body = requestBodyStream;
                 }
 
-                // Capture the response
+                // Перехватим ответ
                 var originalResponseBody = context.Response.Body;
                 using var responseBodyStream = new MemoryStream();
                 context.Response.Body = responseBodyStream;
 
-                var startTime = DateTime.UtcNow;
+                var start = DateTime.UtcNow;
                 await _next(context);
-                var endTime = DateTime.UtcNow;
+                var end = DateTime.UtcNow;
 
                 log.StatusCode = context.Response.StatusCode;
-                log.ResponseTime = endTime;
-                log.Duration = endTime - startTime;
+                log.ResponseTime = end;
+                log.Duration = end - start;
 
-                responseBodyStream.Seek(0, SeekOrigin.Begin);
-                var responseBodyText = await new StreamReader(responseBodyStream).ReadToEndAsync();
-                
-                // For binary responses or file downloads, just log a placeholder
-                if (context.Response.ContentType != null && 
-                   (context.Response.ContentType.Contains("application/octet-stream") || 
-                    context.Response.ContentType.Contains("application/vnd.openxmlformats") ||
-                    responseBodyText.Length > 1000000)) // Over ~1MB
+                responseBodyStream.Position = 0;
+                var respText = await new StreamReader(responseBodyStream).ReadToEndAsync();
+                if (context.Response.ContentType != null &&
+                    (context.Response.ContentType.Contains("application/octet-stream") ||
+                     context.Response.ContentType.Contains("application/vnd.openxmlformats") ||
+                     respText.Length > 1_000_000))
                 {
                     log.ResponseBody = "<binary>";
                 }
                 else
                 {
-                    // Limit response body size to prevent DB issues
-                    log.ResponseBody = responseBodyText.Length > 10000 ? responseBodyText.Substring(0, 10000) + "..." : responseBodyText;
+                    log.ResponseBody = respText.Length > 10000 ? respText[..10000] + "..." : respText;
                 }
 
-                responseBodyStream.Seek(0, SeekOrigin.Begin);
+                responseBodyStream.Position = 0;
                 await responseBodyStream.CopyToAsync(originalResponseBody);
 
-                // Find user ID from username if available
+                // *** ЕДИНСТВЕННЫЙ scope и DataContext ***
+                using var scope = context.RequestServices.CreateScope();
+                var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
+
+                // Найти userId, если username есть
                 if (!string.IsNullOrEmpty(username))
                 {
-                    using (var scope = context.RequestServices.CreateScope())
-                    {
-                        var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
-                        var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Username == username);
-                        if (user != null)
-                        {
-                            log.UserId = user.Id;
-                        }
-                    }
+                    var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Username == username);
+                    if (user != null)
+                        log.UserId = user.Id;
                 }
 
-                // Save log to database
-                using (var scope = context.RequestServices.CreateScope())
-                {
-                    var dbContext = scope.ServiceProvider.GetRequiredService<DataContext>();
-                    dbContext.RequestLogs.Add(log);
-                    await dbContext.SaveChangesAsync();
-                }
+                // Сохранить RequestLog
+                dbContext.RequestLogs.Add(log);
+                await dbContext.SaveChangesAsync();
             }
             catch (Exception ex)
             {
-                // If an error occurs during logging, we still want the application to continue
                 Console.WriteLine($"Error in request logging middleware: {ex.Message}");
             }
             finally
             {
-                // Restore the original request body stream
+                // Восстановить тело запроса
                 context.Request.Body = originalRequestBody;
             }
         }
     }
 
-    // Extension method for easy middleware registration
-    public static class RequestLoggingMiddlewareExtensions
+        // Extension method for easy middleware registration
+        public static class RequestLoggingMiddlewareExtensions
     {
         public static IApplicationBuilder UseRequestLogging(this IApplicationBuilder builder)
         {

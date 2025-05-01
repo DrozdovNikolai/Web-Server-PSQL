@@ -1158,22 +1158,22 @@ $BODY$;
 ALTER FUNCTION ums.select_table_definition(text)
     OWNER TO postgres;
 
-    CREATE OR REPLACE FUNCTION ums.select_table_user(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+   CREATE OR REPLACE FUNCTION ums.select_table_user()
+RETURNS json
+LANGUAGE plpgsql
 AS $BODY$
 BEGIN
     RETURN (
-        SELECT json_agg(
-            json_build_object(
-                'id', tu.id,
-                'table_name', tu.tablename,
-                'user_id', tu.user_id,
-                'table_definition', ums.select_table_definition(tu.tablename)
-            )
+        SELECT COALESCE(
+            json_agg(
+                json_build_object(
+                    'id', tu.id,
+                    'table_name', tu.tablename,
+                    'user_id', tu.user_id,
+                    'table_definition', ums.select_table_definition(tu.tablename)
+                )
+            ),
+            '[]'::json
         )
         FROM ums.ums_table_user tu
     );
