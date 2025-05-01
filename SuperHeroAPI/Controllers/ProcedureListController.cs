@@ -818,34 +818,41 @@ private string QuoteIdent(string ident)
         if (string.IsNullOrWhiteSpace(targetSql))
             return BadRequest("SQL code is required.");
 
+        // 1) Извлекаем роли
         var roles = GetRolesFromJwtToken();
         if (roles == null || roles.Count == 0)
             return StatusCode(403, new { message = "No roles available to set." });
 
+        // 2) Парсим схему и имя таблицы
         var (schema, table) = ExtractSchemaAndTable(targetSql);
         if (string.IsNullOrEmpty(table))
             return BadRequest("Unable to extract table name from the SQL code.");
 
+        // 3) Собираем квалифицированное имя
         var fullIdent = schema != null
             ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
             : QuoteIdent(table);
 
-        // --- Получаем текущее DDL ---
+        // 4) Получаем текущее DDL — ВЫЗЫВАЕМ EF, но НЕ затрагиваем сам Connection
         string currentSql;
-        await _context.Database.OpenConnectionAsync();
-        try
         {
-            var conn = _context.Database.GetDbConnection();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = $"SELECT ums.select_table_definition('{schema}.{table}')";
-            currentSql = (await cmd.ExecuteScalarAsync())?.ToString()
-                         ?? throw new Exception("Cannot fetch current table DDL.");
-        }
-        finally
-        {
-            await _context.Database.CloseConnectionAsync();
+            // единожды открываем и закрываем именно EF-Connection только для выборки DDL
+            await _context.Database.OpenConnectionAsync();
+            try
+            {
+                var efConn = _context.Database.GetDbConnection();
+                using var ddlCmd = efConn.CreateCommand();
+                ddlCmd.CommandText = $"SELECT ums.select_table_definition('{schema}.{table}');";
+                currentSql = (await ddlCmd.ExecuteScalarAsync())?.ToString()
+                             ?? throw new Exception("Cannot fetch current table DDL.");
+            }
+            finally
+            {
+                await _context.Database.CloseConnectionAsync();
+            }
         }
 
+        // 5) Парсим DDL и генерим ALTER-скрипты
         var currentDef = DefinitionParser.Parse(currentSql);
         var targetDef = DefinitionParser.Parse(targetSql);
         var alters = SchemaDiffer.GenerateChangeScripts(schema, table, currentDef, targetDef);
@@ -853,39 +860,42 @@ private string QuoteIdent(string ident)
         if (!alters.Any())
             return Ok(new { success = true, message = "Schema is up to date, no changes needed." });
 
+        // 6) Берём connection string и для каждого role открываем новый NpgsqlConnection
+        var cs = _context.Database.GetDbConnection().ConnectionString;
         var errors = new List<object>();
 
-        // --- Перебираем роли ---
         foreach (var role in roles)
         {
-            await _context.Database.OpenConnectionAsync();
-            using var tx = await _context.Database.BeginTransactionAsync();
+            await using var conn = new NpgsqlConnection(cs);
+            await conn.OpenAsync();
+            await using var tx = await conn.BeginTransactionAsync();
             try
             {
-                var conn = _context.Database.GetDbConnection();
-
                 // SET ROLE
-                using (var roleCmd = conn.CreateCommand())
+                await using (var cmdRole = conn.CreateCommand())
                 {
-                    roleCmd.CommandText = $"SET ROLE {QuoteIdent(role)};";
-                    await roleCmd.ExecuteNonQueryAsync();
+                    cmdRole.Transaction = tx;
+                    cmdRole.CommandText = $"SET ROLE {QuoteIdent(role)};";
+                    await cmdRole.ExecuteNonQueryAsync();
                 }
 
                 // APPLY ALTER SCRIPTS
                 var executed = new List<string>();
                 foreach (var sql in alters)
                 {
-                    using var cmd = conn.CreateCommand();
+                    await using var cmd = conn.CreateCommand();
+                    cmd.Transaction = tx;
                     cmd.CommandText = sql;
                     await cmd.ExecuteNonQueryAsync();
                     executed.Add(sql);
                 }
 
                 // RESET ROLE
-                using (var roleCmd = conn.CreateCommand())
+                await using (var cmdReset = conn.CreateCommand())
                 {
-                    roleCmd.CommandText = "RESET ROLE;";
-                    await roleCmd.ExecuteNonQueryAsync();
+                    cmdReset.Transaction = tx;
+                    cmdReset.CommandText = "RESET ROLE;";
+                    await cmdReset.ExecuteNonQueryAsync();
                 }
 
                 await tx.CommitAsync();
@@ -914,10 +924,7 @@ private string QuoteIdent(string ident)
                 await tx.RollbackAsync();
                 errors.Add(new { role, error = ex.Message });
             }
-            finally
-            {
-                await _context.Database.CloseConnectionAsync();
-            }
+            // conn.DisposeAsync() выполнится автоматически
         }
 
         return StatusCode(403, new
