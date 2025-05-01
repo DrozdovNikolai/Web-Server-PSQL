@@ -1195,10 +1195,10 @@ public static class DefinitionParser
 public static class SchemaDiffer
 {
     public static List<string> GenerateChangeScripts(
-         string schema,
-         string table,
-         TableDefinition current,
-         TableDefinition target)
+        string schema,
+        string table,
+        TableDefinition current,
+        TableDefinition target)
     {
         var fullName = schema != null
             ? $"\"{schema}\".\"{table}\""
@@ -1207,30 +1207,31 @@ public static class SchemaDiffer
         var scripts = new List<string>();
 
         //
-        // 1) Колонки (ADD, ALTER TYPE/DEFAULT/NULL, DROP)
+        // 1) Колонки
         //
         var curCols = current.Columns
             .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
         var tgtCols = target.Columns
             .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
 
-        // 1.1 Add or alter existing
+        // 1.1 ADD / ALTER
         foreach (var kv in tgtCols)
         {
             var name = kv.Key;
             var col = kv.Value;
             if (!curCols.ContainsKey(name))
             {
-                // ADD COLUMN
-                var sql = $"ALTER TABLE {fullName} ADD COLUMN {col.Name} {col.DataType}" +
-                          (col.Default != null ? $" DEFAULT {col.Default}" : "") +
-                          (col.NotNull ? " NOT NULL" : "");
-                scripts.Add(sql + ";");
+                scripts.Add(
+                    $"ALTER TABLE {fullName} ADD COLUMN {col.Name} {col.DataType}" +
+                    (col.Default != null ? $" DEFAULT {col.Default}" : "") +
+                    (col.NotNull ? " NOT NULL" : "") +
+                    ";"
+                );
             }
             else
             {
                 var old = curCols[name];
-                if (!string.Equals(old.DataType, col.DataType, StringComparison.OrdinalIgnoreCase))
+                if (!old.DataType.Equals(col.DataType, StringComparison.OrdinalIgnoreCase))
                     scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} TYPE {col.DataType};");
 
                 if (old.Default != col.Default)
@@ -1245,16 +1246,13 @@ public static class SchemaDiffer
                     scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} {(col.NotNull ? "SET" : "DROP")} NOT NULL;");
             }
         }
-        // 1.2 Drop columns missing in target
+        // 1.2 DROP лишних колонок
         foreach (var name in curCols.Keys.Except(tgtCols.Keys, StringComparer.OrdinalIgnoreCase))
-        {
             scripts.Add($"ALTER TABLE {fullName} DROP COLUMN {name} CASCADE;");
-        }
 
         //
-        // 2) Constraints
+        // 2) Constraints — группируем, чтобы убрать дубли
         //
-        // 2.1 Сгруппировать и убрать дубли в current и target
         var curCons = current.Constraints
             .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
@@ -1265,7 +1263,7 @@ public static class SchemaDiffer
             .Select(g => g.First())
             .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
 
-        // 2.2 Добавить новые и обновить изменённые
+        // 2.1 ADD / ALTER
         foreach (var kv in tgtCons)
         {
             var name = kv.Key;
@@ -1274,28 +1272,32 @@ public static class SchemaDiffer
             {
                 scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {name} {def};");
             }
-            else if (!string.Equals(curCons[name].Definition, def, StringComparison.OrdinalIgnoreCase))
+            else if (!curCons[name].Definition.Equals(def, StringComparison.OrdinalIgnoreCase))
             {
+                // drop + re-create
                 scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {name} CASCADE;");
                 scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {name} {def};");
             }
         }
-        // 2.3 Удалить лишние
+        // 2.2 DROP старых
         foreach (var name in curCons.Keys.Except(tgtCons.Keys, StringComparer.OrdinalIgnoreCase))
-        {
             scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {name} CASCADE;");
-        }
 
         //
-        // 3) Индексы
+        // 3) Индексы — аналогично, без дублей
         //
-        var curIdx = new HashSet<string>(current.Indexes.Select(i => i.Definition), StringComparer.OrdinalIgnoreCase);
-        foreach (var idx in target.Indexes)
+        var curIdx = new HashSet<string>(
+            current.Indexes.Select(i => i.Definition),
+            StringComparer.OrdinalIgnoreCase
+        );
+        foreach (var idx in target.Indexes
+                                    .Select(i => i.Definition)
+                                    .Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            if (!curIdx.Contains(idx.Definition))
-                scripts.Add(idx.Definition + ";");
+            if (!curIdx.Contains(idx))
+                scripts.Add(idx + ";");
         }
-        // (По желанию: удаление индексов, которых нет в целевом, аналогично constraints)
+        // (по желанию можно добавить удаление лишних индексов)
 
         return scripts;
     }
