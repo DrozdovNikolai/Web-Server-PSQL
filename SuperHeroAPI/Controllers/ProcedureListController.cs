@@ -1079,56 +1079,105 @@ public static class DefinitionParser
     {
         var def = new TableDefinition();
 
-        // 1) Парсим CREATE TABLE блок: всё между скобок
-        var tblMatch = Regex.Match(ddl, @"CREATE\s+TABLE[^(]+\((.*)\)\s*;", RegexOptions.Singleline | RegexOptions.IgnoreCase);
-        if (tblMatch.Success)
-        {
-            var inside = tblMatch.Groups[1].Value;
-            foreach (var line in inside
-                     .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-                     .Select(l => l.Trim().TrimEnd(',')))
-            {
-                // Колонка: начинается с идентификатора
-                var colMatch = Regex.Match(line,
-                  @"^(?<name>""?[\w]+""?)\s+" +
-                  @"(?<type>[\w\(\),\s]+)" +
-                  @"(?:\s+DEFAULT\s+(?<def>[^ ]+))?" +
-                  @"(?:\s+(?<nn>NOT NULL))?$",
-                  RegexOptions.IgnoreCase);
-                if (colMatch.Success)
-                {
-                    def.Columns.Add(new ColumnDef
-                    {
-                        Name = colMatch.Groups["name"].Value,
-                        DataType = colMatch.Groups["type"].Value.Trim(),
-                        Default = colMatch.Groups["def"].Success
-                                     ? colMatch.Groups["def"].Value
-                                     : null,
-                        NotNull = colMatch.Groups["nn"].Success
-                    });
-                    continue;
-                }
+        // Normalize line endings
+        ddl = ddl.Replace("\r\n", "\n");
 
-                // Constraint
-                var conMatch = Regex.Match(line,
-                  @"^CONSTRAINT\s+(?<name>[\w]+)\s+(?<def>.+)$",
-                  RegexOptions.IgnoreCase);
-                if (conMatch.Success)
+        // Locate the CREATE TABLE keyword
+        var createIdx = ddl.IndexOf("CREATE TABLE", StringComparison.OrdinalIgnoreCase);
+        if (createIdx < 0)
+            return def;
+
+        // Find the opening parenthesis for the column/constraint list
+        var parenOpen = ddl.IndexOf('(', createIdx);
+        if (parenOpen < 0)
+            return def;
+
+        // Walk the DDL to find the matching closing parenthesis
+        int depth = 0;
+        int bodyStart = -1, bodyEnd = -1;
+        for (int i = parenOpen; i < ddl.Length; i++)
+        {
+            if (ddl[i] == '(')
+            {
+                if (depth == 0)
+                    bodyStart = i + 1;
+                depth++;
+            }
+            else if (ddl[i] == ')')
+            {
+                depth--;
+                if (depth == 0)
                 {
-                    def.Constraints.Add(new ConstraintDef
-                    {
-                        Name = conMatch.Groups["name"].Value,
-                        Definition = conMatch.Groups["def"].Value.Trim()
-                    });
-                    continue;
+                    bodyEnd = i;
+                    break;
                 }
             }
         }
+        if (bodyStart < 0 || bodyEnd < 0 || bodyEnd <= bodyStart)
+            return def;
 
-        // 2) Индексы: строки CREATE INDEX после TABLE
-        foreach (Match m in Regex.Matches(ddl, @"^(CREATE\s+.+INDEX.+);$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
+        var body = ddl.Substring(bodyStart, bodyEnd - bodyStart);
+
+        // Split body by lines and trim
+        var lines = body
+            .Split('\n')
+            .Select(l => l.Trim())
+            .Where(l => !string.IsNullOrEmpty(l))
+            .Select(l => l.TrimEnd(','))
+            .ToList();
+
+        // Parse columns and table-level constraints
+        foreach (var line in lines)
         {
-            def.Indexes.Add(new IndexDef { Definition = m.Groups[1].Value });
+            // Constraint line begins with CONSTRAINT
+            if (line.StartsWith("CONSTRAINT", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = Regex.Split(line, "\\s+", 3);
+                if (parts.Length >= 3)
+                {
+                    var name = parts[1].Trim('"');
+                    var defn = parts[2];
+                    def.Constraints.Add(new ConstraintDef
+                    {
+                        Name = name,
+                        Definition = defn.Trim()
+                    });
+                }
+                continue;
+            }
+
+            // Column line: first token is name
+            var colMatch = Regex.Match(line,
+                "^(\\"?[\\w] +\\"?)\\s+(?<type>.+)$",
+                RegexOptions.IgnoreCase);
+            if (colMatch.Success)
+            {
+                var colName = colMatch.Groups[1].Value.Trim('"');
+                var rest = colMatch.Groups["type"].Value;
+
+                // Split default and not null
+                var defaultMatch = Regex.Match(rest, @"DEFAULT\s+(?<def>.+?)(?=\s+NOT\s+NULL|$)", RegexOptions.IgnoreCase);
+                var notNull = Regex.IsMatch(rest, "NOT\s+NULL", RegexOptions.IgnoreCase);
+
+                def.Columns.Add(new ColumnDef
+                {
+                    Name = colName,
+                    DataType = defaultMatch.Success
+                        ? rest.Substring(0, defaultMatch.Index).Trim()
+                        : rest.Split(new[] { ' ' }, 2)[0].Trim(),
+                    Default = defaultMatch.Success ? defaultMatch.Groups["def"].Value.Trim() : null,
+                    NotNull = notNull
+                });
+            }
+        }
+
+        // Parse indexes outside body
+        foreach (Match idx in Regex.Matches(ddl, @"^CREATE\s+(UNIQUE\s+)?INDEX.+;$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
+        {
+            def.Indexes.Add(new IndexDef
+            {
+                Definition = idx.Value.TrimEnd(';').Trim()
+            });
         }
 
         return def;
