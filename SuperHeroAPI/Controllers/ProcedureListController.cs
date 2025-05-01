@@ -818,36 +818,36 @@ private string QuoteIdent(string ident)
         if (string.IsNullOrWhiteSpace(targetSql))
             return BadRequest("SQL code is required.");
 
-        // Извлекаем роли
         var roles = GetRolesFromJwtToken();
         if (roles == null || roles.Count == 0)
             return StatusCode(403, new { message = "No roles available to set." });
 
-        // Спарсим схему и имя
         var (schema, table) = ExtractSchemaAndTable(targetSql);
         if (string.IsNullOrEmpty(table))
             return BadRequest("Unable to extract table name from the SQL code.");
 
-        // Полное имя для SQL
         var fullIdent = schema != null
             ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
             : QuoteIdent(table);
 
-        // Получаем текущее DDL
+        // --- Получаем текущее DDL ---
         string currentSql;
-        using (var conn = _context.Database.GetDbConnection())
+        await _context.Database.OpenConnectionAsync();
+        try
         {
-            await conn.OpenAsync();
+            var conn = _context.Database.GetDbConnection();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $"SELECT ums.select_table_definition('{schema}.{table}')";
             currentSql = (await cmd.ExecuteScalarAsync())?.ToString()
                          ?? throw new Exception("Cannot fetch current table DDL.");
         }
+        finally
+        {
+            await _context.Database.CloseConnectionAsync();
+        }
 
-        // Парсим текущий и целевой DDL
         var currentDef = DefinitionParser.Parse(currentSql);
         var targetDef = DefinitionParser.Parse(targetSql);
-        // Генерим diff-скрипты
         var alters = SchemaDiffer.GenerateChangeScripts(schema, table, currentDef, targetDef);
 
         if (!alters.Any())
@@ -855,23 +855,23 @@ private string QuoteIdent(string ident)
 
         var errors = new List<object>();
 
-        // Перебираем роли
+        // --- Перебираем роли ---
         foreach (var role in roles)
         {
-            using var conn = _context.Database.GetDbConnection();
-            await conn.OpenAsync();
+            await _context.Database.OpenConnectionAsync();
             using var tx = await _context.Database.BeginTransactionAsync();
-
             try
             {
-                // Установить роль
+                var conn = _context.Database.GetDbConnection();
+
+                // SET ROLE
                 using (var roleCmd = conn.CreateCommand())
                 {
                     roleCmd.CommandText = $"SET ROLE {QuoteIdent(role)};";
                     await roleCmd.ExecuteNonQueryAsync();
                 }
 
-                // Применяем все ALTER
+                // APPLY ALTER SCRIPTS
                 var executed = new List<string>();
                 foreach (var sql in alters)
                 {
@@ -881,7 +881,7 @@ private string QuoteIdent(string ident)
                     executed.Add(sql);
                 }
 
-                // Сбросить роль
+                // RESET ROLE
                 using (var roleCmd = conn.CreateCommand())
                 {
                     roleCmd.CommandText = "RESET ROLE;";
@@ -889,13 +889,11 @@ private string QuoteIdent(string ident)
                 }
 
                 await tx.CommitAsync();
-
-                // Успех — отдаем результат
                 return Ok(new
                 {
                     success = true,
                     message = $"Schema updated successfully under role '{role}'.",
-                    role = role,
+                    role,
                     scripts = executed
                 });
             }
@@ -916,9 +914,12 @@ private string QuoteIdent(string ident)
                 await tx.RollbackAsync();
                 errors.Add(new { role, error = ex.Message });
             }
+            finally
+            {
+                await _context.Database.CloseConnectionAsync();
+            }
         }
 
-        // Если все роли упали — возвращаем пул ошибок
         return StatusCode(403, new
         {
             success = false,
@@ -932,32 +933,30 @@ private string QuoteIdent(string ident)
         if (string.IsNullOrWhiteSpace(tableNameInput))
             return BadRequest("Table name is required.");
 
-        // Получаем роли из JWT
         var roles = GetRolesFromJwtToken();
         if (roles == null || roles.Count == 0)
             return StatusCode(403, new { message = "No roles available to set." });
 
-        // Парсим схему и имя таблицы
+        // Парсим схему и имя
         var (schema, table) = ExtractSchemaAndTable($"CREATE TABLE {tableNameInput} (x int);");
         if (string.IsNullOrEmpty(table))
             return BadRequest("Unable to extract table name (and schema) from input.");
 
-        // Собираем квалифицированное имя
         var fullIdent = schema != null
             ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
             : QuoteIdent(table);
 
         var errors = new List<object>();
 
-        // Перебираем роли
         foreach (var role in roles)
         {
-            using var conn = _context.Database.GetDbConnection();
-            await conn.OpenAsync();
+            // Открываем соединение под контролем EF
+            await _context.Database.OpenConnectionAsync();
             using var tx = await _context.Database.BeginTransactionAsync();
-
             try
             {
+                var conn = _context.Database.GetDbConnection();
+
                 // 1) Устанавливаем роль
                 using (var roleCmd = conn.CreateCommand())
                 {
@@ -965,7 +964,7 @@ private string QuoteIdent(string ident)
                     await roleCmd.ExecuteNonQueryAsync();
                 }
 
-                // 2) Удаляем таблицу, если есть
+                // 2) Удаляем таблицу, если она есть
                 using (var dropCmd = conn.CreateCommand())
                 {
                     dropCmd.CommandText = $"DROP TABLE IF EXISTS {fullIdent} CASCADE;";
@@ -981,7 +980,6 @@ private string QuoteIdent(string ident)
 
                 await tx.CommitAsync();
 
-                // Успех — возвращаем ответ сразу
                 return Ok(new
                 {
                     success = true,
@@ -1006,9 +1004,12 @@ private string QuoteIdent(string ident)
                 await tx.RollbackAsync();
                 errors.Add(new { role, error = ex.Message });
             }
+            finally
+            {
+                await _context.Database.CloseConnectionAsync();
+            }
         }
 
-        // Если ни одна роль не сработала
         return StatusCode(403, new
         {
             success = false,
@@ -1016,6 +1017,7 @@ private string QuoteIdent(string ident)
             errors
         });
     }
+
     #region Helpers
 
     private (string Schema, string Table) ExtractSchemaAndTable(string sql)
