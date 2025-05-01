@@ -1345,18 +1345,25 @@ ALTER PROCEDURE ums.delete_user_role_by_user_id(integer)
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE FUNCTION ums.select_permissions(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
-AS $BODY$
-    BEGIN
-        RETURN (SELECT json_agg(row_to_json(t)) FROM (SELECT id as permissionid, role_id as roleid, table_name as tablename, operation as operation  FROM ums.ums_permissions) t);
-    END;
-    
-$BODY$;
+CREATE OR REPLACE FUNCTION ums.select_permissions()
+RETURNS json
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN COALESCE(
+        (SELECT json_agg(row_to_json(t)) 
+         FROM (
+             SELECT id AS permissionid, 
+                    role_id AS roleid, 
+                    table_name AS tablename, 
+                    operation 
+             FROM ums.ums_permissions
+         ) t),
+        '[]'::json
+    );
+END;
+$$;
+
 
 ALTER FUNCTION ums.select_permissions()
     OWNER TO postgres;
