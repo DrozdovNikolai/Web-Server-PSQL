@@ -690,435 +690,560 @@ public class ProcedureListController : ControllerBase
     }
 
 
-    [HttpPost("CreateTableFromSql")]
-    public async Task<IActionResult> CreateTableFromSql([FromBody] string sql)
+ [HttpPost("CreateTableFromSql")]
+public async Task<IActionResult> CreateTableFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrWhiteSpace(sql))
+        return BadRequest("SQL code is required.");
+
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+        return StatusCode(403, new { message = "No roles available to set." });
+
+    // Сюда будем собирать ошибки по каждой роли
+    var errors = new List<object>();
+
+    using var connection = _context.Database.GetDbConnection();
+    try
     {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
-
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
-
-        using var connection = _context.Database.GetDbConnection();
-        try
-        {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
-            {
-                try
-                {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    var tableName = ExtractTableNameFromSql(sql);
-                    if (string.IsNullOrEmpty(tableName))
-                    {
-                        return BadRequest("Unable to extract table name from the SQL code.");
-                    }
-
-                    // Execute the table creation SQL
-                    using var command = connection.CreateCommand();
-                    command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    // Set the table owner to the current user
-                    using var alterCommand = connection.CreateCommand();
-                    alterCommand.CommandText = $"ALTER TABLE {tableName} OWNER TO \"{username}\";";
-                    await alterCommand.ExecuteNonQueryAsync();
-
-
-
-                    // Store the created table with the user who created it
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    var tableUser = new TableUser
-                    {
-                        Tablename = tableName,
-                        UserId = user.Id
-                    };
-
-                    _context.TableUsers.Add(tableUser);
-                    await _context.SaveChangesAsync();
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Table created successfully and ownership set to {username} for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error creating table.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
-            }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Table creation failed for all roles.",
-                rolesTried = roles
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing table creation SQL.",
-                error = ex.Message
-            });
-        }
-    }
-
-    private string ExtractTableNameFromSql(string sql)
-    {
-        var match = Regex.Match(sql, @"CREATE\s+TABLE\s+(public\.)?([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[2].Value : null; // Use Groups[2] to get the table name without "public."
-    }
-    [HttpPut("UpdateTableFromSql")]
-    public async Task<IActionResult> UpdateTableFromSql([FromBody] string sql)
-    {
-        if (string.IsNullOrWhiteSpace(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
-
-        // Получаем роли из JWT (предполагается, что этот метод реализован)
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || !roles.Any())
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
-
-        // Открываем соединение с базой данных
-        await using var connection = _context.Database.GetDbConnection();
         await connection.OpenAsync();
 
-        // Перебираем роли – например, можно остановиться при первой успешной операции
+        // Попытка по каждой роли
         foreach (var role in roles)
         {
-            // Каждое обновление делаем в рамках транзакции, чтобы обеспечить атомарность
-            await using var transaction = await connection.BeginTransactionAsync();
-
             try
             {
-                // 1. Устанавливаем роль
-                await using (var setRoleCmd = connection.CreateCommand())
-                {
-                    setRoleCmd.Transaction = transaction;
-                    setRoleCmd.CommandText = $"SET ROLE \"{role}\";";
-                    await setRoleCmd.ExecuteNonQueryAsync();
-                }
+                // 1) Устанавливаем роль
+                using var roleCmd = connection.CreateCommand();
+                roleCmd.CommandText = $"SET ROLE {QuoteIdent(role)};";
+                await roleCmd.ExecuteNonQueryAsync();
 
-                // 2. Извлекаем имя таблицы из переданного SQL (метод ExtractTableNameFromSql должен быть реализован)
-                var tableName = ExtractTableNameFromSql(sql);
-                if (string.IsNullOrWhiteSpace(tableName))
-                {
+                // 2) Выполняем переданный SQL
+                using var createCmd = connection.CreateCommand();
+                createCmd.CommandText = sql;
+                await createCmd.ExecuteNonQueryAsync();
+
+                // 3) Сбрасываем роль
+                roleCmd.CommandText = "RESET ROLE;";
+                await roleCmd.ExecuteNonQueryAsync();
+
+                // 4) Извлекаем схему и имя таблицы
+                var (schema, table) = ExtractSchemaAndTable(sql);
+                if (string.IsNullOrEmpty(table))
                     return BadRequest("Unable to extract table name from the SQL code.");
-                }
 
-                // 3. Проверяем, существует ли уже таблица
-                bool tableExists = false;
-                await using (var checkCmd = connection.CreateCommand())
-                {
-                    checkCmd.Transaction = transaction;
-                    checkCmd.CommandText =
-                        "SELECT EXISTS(" +
-                        "  SELECT 1 FROM information_schema.tables " +
-                        "  WHERE table_schema = 'public' AND table_name = @tableName" +
-                        ");";
-                    var param = checkCmd.CreateParameter();
-                    param.ParameterName = "tableName";
-                    param.Value = tableName;
-                    checkCmd.Parameters.Add(param);
-                    tableExists = (bool)await checkCmd.ExecuteScalarAsync();
-                }
-
-                // Если таблица существует – переименовываем её в резервную
-                string backupTableName = null;
-                if (tableExists)
-                {
-                    backupTableName = $"{tableName}_backup_{DateTime.UtcNow:yyyyMMddHHmmssfff}";
-                    await using (var renameCmd = connection.CreateCommand())
-                    {
-                        renameCmd.Transaction = transaction;
-                        renameCmd.CommandText = $"ALTER TABLE {tableName} RENAME TO {backupTableName};";
-                        await renameCmd.ExecuteNonQueryAsync();
-                    }
-                }
-
-                // 4. Создаём новую таблицу по переданному SQL‑коду
-                await using (var createCmd = connection.CreateCommand())
-                {
-                    createCmd.Transaction = transaction;
-                    createCmd.CommandText = sql;
-                    await createCmd.ExecuteNonQueryAsync();
-                }
-
-                // 5. Если была резервная таблица, переносим данные
-                if (tableExists)
-                {
-                    // Получаем список столбцов из резервной таблицы
-                    var backupColumns = new List<string>();
-                    await using (var backupColsCmd = connection.CreateCommand())
-                    {
-                        backupColsCmd.Transaction = transaction;
-                        backupColsCmd.CommandText =
-                            "SELECT column_name FROM information_schema.columns " +
-                            "WHERE table_schema = 'public' AND table_name = @backupTable;";
-                        var pBackup = backupColsCmd.CreateParameter();
-                        pBackup.ParameterName = "backupTable";
-                        pBackup.Value = backupTableName;
-                        backupColsCmd.Parameters.Add(pBackup);
-
-                        await using (var reader = await backupColsCmd.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                backupColumns.Add(reader.GetString(0));
-                            }
-                        }
-                    }
-
-                    // Получаем список столбцов из новой таблицы
-                    var newTableColumns = new List<string>();
-                    await using (var newColsCmd = connection.CreateCommand())
-                    {
-                        newColsCmd.Transaction = transaction;
-                        newColsCmd.CommandText =
-                            "SELECT column_name FROM information_schema.columns " +
-                            "WHERE table_schema = 'public' AND table_name = @tableName;";
-                        var pNew = newColsCmd.CreateParameter();
-                        pNew.ParameterName = "tableName";
-                        pNew.Value = tableName;
-                        newColsCmd.Parameters.Add(pNew);
-
-                        await using (var reader = await newColsCmd.ExecuteReaderAsync())
-                        {
-                            while (await reader.ReadAsync())
-                            {
-                                newTableColumns.Add(reader.GetString(0));
-                            }
-                        }
-                    }
-
-                    // Находим общие столбцы
-                    var commonColumns = backupColumns.Intersect(newTableColumns, StringComparer.OrdinalIgnoreCase).ToList();
-                    if (commonColumns.Any())
-                    {
-                        var columnsList = string.Join(", ", commonColumns.Select(c => $"\"{c}\""));
-                        await using (var copyCmd = connection.CreateCommand())
-                        {
-                            copyCmd.Transaction = transaction;
-                            // Переносим данные: вставляем в новую таблицу данные из резервной для общих столбцов
-                            copyCmd.CommandText = $"INSERT INTO {tableName} ({columnsList}) SELECT {columnsList} FROM {backupTableName};";
-                            await copyCmd.ExecuteNonQueryAsync();
-                        }
-                    }
-
-                    // Удаляем резервную таблицу
-                    await using (var dropBackupCmd = connection.CreateCommand())
-                    {
-                        dropBackupCmd.Transaction = transaction;
-                        dropBackupCmd.CommandText = $"DROP TABLE {backupTableName};";
-                        await dropBackupCmd.ExecuteNonQueryAsync();
-                    }
-                }
-
-                // 6. Определяем владельца таблицы – текущего пользователя (из JWT)
+                // 5) Альтерируем владельца на текущего пользователя
                 var username = User.Identity?.Name;
-                if (string.IsNullOrWhiteSpace(username))
-                {
+                if (string.IsNullOrEmpty(username))
                     return Unauthorized("User is not authorized.");
-                }
-                await using (var alterCmd = connection.CreateCommand())
+
+                var fullTable = schema != null
+                    ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
+                    : QuoteIdent(table);
+
+                using var alterCmd = connection.CreateCommand();
+                alterCmd.CommandText = $"ALTER TABLE {fullTable} OWNER TO {QuoteIdent(username)};";
+                await alterCmd.ExecuteNonQueryAsync();
+
+                // 6) Логируем в БД, кто создал
+                var user = await _context.Users
+                    .AsNoTracking()
+                    .SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
+                    return NotFound("User not found.");
+
+                _context.TableUsers.Add(new TableUser
                 {
-                    alterCmd.Transaction = transaction;
-                    alterCmd.CommandText = $"ALTER TABLE {tableName} OWNER TO \"{username}\";";
-                    await alterCmd.ExecuteNonQueryAsync();
-                }
+                    Tablename = fullTable,
+                    UserId = user.Id
+                });
+                await _context.SaveChangesAsync();
 
-                // 7. Сбрасываем роль
-                await using (var resetRoleCmd = connection.CreateCommand())
-                {
-                    resetRoleCmd.Transaction = transaction;
-                    resetRoleCmd.CommandText = "RESET ROLE;";
-                    await resetRoleCmd.ExecuteNonQueryAsync();
-                }
-
-                // 8. Фиксируем транзакцию
-                await transaction.CommitAsync();
-
+                // Успех — сразу выходим
                 return Ok(new
                 {
                     success = true,
-                    message = $"Table '{tableName}' updated successfully. Ownership set to '{username}' for role '{role}'."
+                    message = $"Table {fullTable} created and owner set to {username} under role {role}.",
+                    role = role
                 });
             }
             catch (PostgresException pgEx)
             {
-                await transaction.RollbackAsync();
-                return BadRequest(new
+                // Запоминаем ошибку по этой роли и пробуем следующую
+                errors.Add(new
                 {
-                    success = false,
-                    message = "Error updating table.",
-                    postgresError = pgEx.MessageText,
-                    postgresDetails = pgEx.Detail,
-                    postgresHint = pgEx.Hint,
-                    postgresCode = pgEx.SqlState
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
                 });
             }
             catch (Exception ex)
             {
-                await transaction.RollbackAsync();
-                // Можно добавить логирование ошибки здесь
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Error executing table update SQL.",
-                    error = ex.Message
-                });
+                errors.Add(new { role, error = ex.Message });
             }
         }
 
-        // Если ни для одной из ролей операция не прошла успешно:
+        // Если ни одна роль не прошла — отдаем всё сразу
         return StatusCode(403, new
         {
             success = false,
-            message = "Table update failed for all roles.",
-            rolesTried = roles
+            message = "Table creation failed for all roles.",
+            errors
         });
     }
-
-    [HttpDelete("DeleteTable/{tableName}")]
-    public async Task<IActionResult> DeleteTable(string tableName)
+    catch (Exception ex)
     {
+        return StatusCode(500, new
+        {
+            success = false,
+            message = "Error executing table creation SQL.",
+            error = ex.Message
+        });
+    }
+}
+
+
+/// <summary>
+/// Экранирует идентификатор для PostgreSQL (двойные кавычки внутри удваиваются).
+/// </summary>
+private string QuoteIdent(string ident)
+    => "\"" + ident.Replace("\"", "\"\"") + "\"";
+    [HttpPost("UpdateTableFromSql")]
+    public async Task<IActionResult> UpdateTableFromSql([FromBody] string targetSql)
+    {
+        if (string.IsNullOrWhiteSpace(targetSql))
+            return BadRequest("SQL code is required.");
+
+        // Извлекаем роли
         var roles = GetRolesFromJwtToken();
         if (roles == null || roles.Count == 0)
-        {
             return StatusCode(403, new { message = "No roles available to set." });
+
+        // Спарсим схему и имя
+        var (schema, table) = ExtractSchemaAndTable(targetSql);
+        if (string.IsNullOrEmpty(table))
+            return BadRequest("Unable to extract table name from the SQL code.");
+
+        // Полное имя для SQL
+        var fullIdent = schema != null
+            ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
+            : QuoteIdent(table);
+
+        // Получаем текущее DDL
+        string currentSql;
+        using (var conn = _context.Database.GetDbConnection())
+        {
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT ums.select_table_definition('{schema}.{table}')";
+            currentSql = (await cmd.ExecuteScalarAsync())?.ToString()
+                         ?? throw new Exception("Cannot fetch current table DDL.");
         }
 
-        using var connection = _context.Database.GetDbConnection();
-        try
+        // Парсим текущий и целевой DDL
+        var currentDef = DefinitionParser.Parse(currentSql);
+        var targetDef = DefinitionParser.Parse(targetSql);
+        // Генерим diff-скрипты
+        var alters = SchemaDiffer.GenerateChangeScripts(schema, table, currentDef, targetDef);
+
+        if (!alters.Any())
+            return Ok(new { success = true, message = "Schema is up to date, no changes needed." });
+
+        var errors = new List<object>();
+
+        // Перебираем роли
+        foreach (var role in roles)
         {
-            await connection.OpenAsync();
+            using var conn = _context.Database.GetDbConnection();
+            await conn.OpenAsync();
+            using var tx = await _context.Database.BeginTransactionAsync();
 
-            foreach (var role in roles)
+            try
             {
-                try
+                // Установить роль
+                using (var roleCmd = conn.CreateCommand())
                 {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    // Drop the table if it exists
-                    using var command = connection.CreateCommand();
-                    command.CommandText = $"DROP TABLE IF EXISTS {tableName};";
-                    await command.ExecuteNonQueryAsync();
-
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    // Remove the corresponding TableUser row
-                    var existingTableUser = await _context.TableUsers
-                        .FirstOrDefaultAsync(tu => tu.Tablename == tableName && tu.UserId == user.Id);
-
-                    if (existingTableUser != null)
-                    {
-                        _context.TableUsers.Remove(existingTableUser);
-                        await _context.SaveChangesAsync();
-                    }
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Table '{tableName}' deleted successfully for role {role}.",
-                        role = role
-                    });
+                    roleCmd.CommandText = $"SET ROLE {QuoteIdent(role)};";
+                    await roleCmd.ExecuteNonQueryAsync();
                 }
-                catch (PostgresException pgEx)
+
+                // Применяем все ALTER
+                var executed = new List<string>();
+                foreach (var sql in alters)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error deleting table.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    using var cmd = conn.CreateCommand();
+                    cmd.CommandText = sql;
+                    await cmd.ExecuteNonQueryAsync();
+                    executed.Add(sql);
                 }
-                catch (Exception ex)
+
+                // Сбросить роль
+                using (var roleCmd = conn.CreateCommand())
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    roleCmd.CommandText = "RESET ROLE;";
+                    await roleCmd.ExecuteNonQueryAsync();
+                }
+
+                await tx.CommitAsync();
+
+                // Успех — отдаем результат
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Schema updated successfully under role '{role}'.",
+                    role = role,
+                    scripts = executed
+                });
+            }
+            catch (PostgresException pgEx)
+            {
+                await tx.RollbackAsync();
+                errors.Add(new
+                {
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
+                });
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                errors.Add(new { role, error = ex.Message });
+            }
+        }
+
+        // Если все роли упали — возвращаем пул ошибок
+        return StatusCode(403, new
+        {
+            success = false,
+            message = "Schema update failed for all roles.",
+            errors
+        });
+    }
+    [HttpPost("DeleteTable")]
+    public async Task<IActionResult> DeleteTable([FromBody] string tableNameInput)
+    {
+        if (string.IsNullOrWhiteSpace(tableNameInput))
+            return BadRequest("Table name is required.");
+
+        // Получаем роли из JWT
+        var roles = GetRolesFromJwtToken();
+        if (roles == null || roles.Count == 0)
+            return StatusCode(403, new { message = "No roles available to set." });
+
+        // Парсим схему и имя таблицы
+        var (schema, table) = ExtractSchemaAndTable($"CREATE TABLE {tableNameInput} (x int);");
+        if (string.IsNullOrEmpty(table))
+            return BadRequest("Unable to extract table name (and schema) from input.");
+
+        // Собираем квалифицированное имя
+        var fullIdent = schema != null
+            ? $"{QuoteIdent(schema)}.{QuoteIdent(table)}"
+            : QuoteIdent(table);
+
+        var errors = new List<object>();
+
+        // Перебираем роли
+        foreach (var role in roles)
+        {
+            using var conn = _context.Database.GetDbConnection();
+            await conn.OpenAsync();
+            using var tx = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                // 1) Устанавливаем роль
+                using (var roleCmd = conn.CreateCommand())
+                {
+                    roleCmd.CommandText = $"SET ROLE {QuoteIdent(role)};";
+                    await roleCmd.ExecuteNonQueryAsync();
+                }
+
+                // 2) Удаляем таблицу, если есть
+                using (var dropCmd = conn.CreateCommand())
+                {
+                    dropCmd.CommandText = $"DROP TABLE IF EXISTS {fullIdent} CASCADE;";
+                    await dropCmd.ExecuteNonQueryAsync();
+                }
+
+                // 3) Сбрасываем роль
+                using (var roleCmd = conn.CreateCommand())
+                {
+                    roleCmd.CommandText = "RESET ROLE;";
+                    await roleCmd.ExecuteNonQueryAsync();
+                }
+
+                await tx.CommitAsync();
+
+                // Успех — возвращаем ответ сразу
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Table {fullIdent} was dropped under role '{role}'.",
+                    role
+                });
+            }
+            catch (PostgresException pgEx)
+            {
+                await tx.RollbackAsync();
+                errors.Add(new
+                {
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
+                });
+            }
+            catch (Exception ex)
+            {
+                await tx.RollbackAsync();
+                errors.Add(new { role, error = ex.Message });
+            }
+        }
+
+        // Если ни одна роль не сработала
+        return StatusCode(403, new
+        {
+            success = false,
+            message = "Table drop failed for all roles.",
+            errors
+        });
+    }
+    #region Helpers
+
+    private (string Schema, string Table) ExtractSchemaAndTable(string sql)
+    {
+        var pattern =
+            @"CREATE\s+TABLE\s+" +
+            @"(?:(?:" +
+              @"""(?<schema>[^""]+)""|\b(?<schema>\w+)\b" +
+            @")\.)?" +
+            @"(?:" +
+              @"""(?<table>[^""]+)""|\b(?<table>\w+)\b" +
+            @")";
+        var m = Regex.Match(sql, pattern, RegexOptions.IgnoreCase);
+        if (!m.Success) return (null, null);
+        var schema = m.Groups["schema"].Success ? m.Groups["schema"].Value : null;
+        var table = m.Groups["table"].Value;
+        return (schema, table);
+    }
+
+
+    #endregion
+}
+
+// ===== Модели и парсер =====
+
+public class TableDefinition
+{
+    public List<ColumnDef> Columns { get; set; } = new();
+    public List<ConstraintDef> Constraints { get; set; } = new();
+    public List<IndexDef> Indexes { get; set; } = new();
+}
+
+public class ColumnDef
+{
+    public string Name { get; set; }
+    public string DataType { get; set; }
+    public string Default { get; set; }
+    public bool NotNull { get; set; }
+}
+
+public class ConstraintDef
+{
+    public string Name { get; set; }
+    public string Definition { get; set; }  // без префикса "CONSTRAINT name"
+}
+
+public class IndexDef
+{
+    public string Definition { get; set; }  // полная строка "CREATE [UNIQUE] INDEX …"
+}
+
+public static class DefinitionParser
+{
+    /// <summary>
+    /// Простенький парсер на основе регулярных выражений.
+    /// Можно доработать, чтобы поддерживать всё, что нужно.
+    /// </summary>
+    public static TableDefinition Parse(string ddl)
+    {
+        var def = new TableDefinition();
+
+        // 1) Парсим CREATE TABLE блок: всё между скобок
+        var tblMatch = Regex.Match(ddl, @"CREATE\s+TABLE[^(]+\((.*)\)\s*;", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+        if (tblMatch.Success)
+        {
+            var inside = tblMatch.Groups[1].Value;
+            foreach (var line in inside
+                     .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                     .Select(l => l.Trim().TrimEnd(',')))
+            {
+                // Колонка: начинается с идентификатора
+                var colMatch = Regex.Match(line,
+                  @"^(?<name>""?[\w]+""?)\s+" +
+                  @"(?<type>[\w\(\),\s]+)" +
+                  @"(?:\s+DEFAULT\s+(?<def>[^ ]+))?" +
+                  @"(?:\s+(?<nn>NOT NULL))?$",
+                  RegexOptions.IgnoreCase);
+                if (colMatch.Success)
+                {
+                    def.Columns.Add(new ColumnDef
+                    {
+                        Name = colMatch.Groups["name"].Value,
+                        DataType = colMatch.Groups["type"].Value.Trim(),
+                        Default = colMatch.Groups["def"].Success
+                                     ? colMatch.Groups["def"].Value
+                                     : null,
+                        NotNull = colMatch.Groups["nn"].Success
+                    });
+                    continue;
+                }
+
+                // Constraint
+                var conMatch = Regex.Match(line,
+                  @"^CONSTRAINT\s+(?<name>[\w]+)\s+(?<def>.+)$",
+                  RegexOptions.IgnoreCase);
+                if (conMatch.Success)
+                {
+                    def.Constraints.Add(new ConstraintDef
+                    {
+                        Name = conMatch.Groups["name"].Value,
+                        Definition = conMatch.Groups["def"].Value.Trim()
+                    });
+                    continue;
                 }
             }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Table deletion failed for all roles.",
-                rolesTried = roles
-            });
         }
-        catch (Exception ex)
+
+        // 2) Индексы: строки CREATE INDEX после TABLE
+        foreach (Match m in Regex.Matches(ddl, @"^(CREATE\s+.+INDEX.+);$", RegexOptions.Multiline | RegexOptions.IgnoreCase))
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing table deletion SQL.",
-                error = ex.Message
-            });
+            def.Indexes.Add(new IndexDef { Definition = m.Groups[1].Value });
         }
-    }
- 
 
+        return def;
+    }
 }
+
+// ===== Дифф и генерация ALTER =====
+
+public static class SchemaDiffer
+{
+    public static List<string> GenerateChangeScripts(
+        string schema,
+        string table,
+        TableDefinition current,
+        TableDefinition target)
+    {
+        var fullName = schema != null
+            ? $"\"{schema}\".\"{table}\""
+            : $"\"{table}\"";
+
+        var scripts = new List<string>();
+
+        // 1) Columns: add, alter type, default, nullability, rename, drop
+        var curCols = current.Columns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+        var tgtCols = target.Columns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+
+        // Add new columns
+        foreach (var tgt in target.Columns)
+        {
+            if (!curCols.ContainsKey(tgt.Name))
+            {
+                var sql = $"ALTER TABLE {fullName} ADD COLUMN {tgt.Name} {tgt.DataType}" +
+                          (tgt.Default != null ? $" DEFAULT {tgt.Default}" : "") +
+                          (tgt.NotNull ? " NOT NULL" : "");
+                scripts.Add(sql + ";");
+            }
+        }
+
+        // Modify existing columns
+        foreach (var cur in current.Columns)
+        {
+            if (tgtCols.TryGetValue(cur.Name, out var tgt))
+            {
+                if (!string.Equals(cur.DataType, tgt.DataType, StringComparison.OrdinalIgnoreCase))
+                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} TYPE {tgt.DataType};");
+                if (cur.Default != tgt.Default)
+                {
+                    if (tgt.Default != null)
+                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} SET DEFAULT {tgt.Default};");
+                    else
+                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} DROP DEFAULT;");
+                }
+                if (cur.NotNull != tgt.NotNull)
+                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} {(tgt.NotNull ? "SET" : "DROP")} NOT NULL;");
+            }
+        }
+
+        // Drop columns not in target
+        var dropCols = current.Columns
+            .Select(c => c.Name)
+            .Except(target.Columns.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var col in dropCols)
+            scripts.Add($"ALTER TABLE {fullName} DROP COLUMN {col} CASCADE;");
+
+        // 2) Constraints: add, alter, drop
+        var curCons = current.Constraints.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+        var tgtCons = target.Constraints.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+
+        // Add or alter constraints
+        foreach (var tgt in target.Constraints)
+        {
+            if (!curCons.ContainsKey(tgt.Name))
+            {
+                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {tgt.Name} {tgt.Definition};");
+            }
+            else if (!string.Equals(curCons[tgt.Name].Definition, tgt.Definition, StringComparison.OrdinalIgnoreCase))
+            {
+                // Drop and re-create altered constraint
+                scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {tgt.Name} CASCADE;");
+                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {tgt.Name} {tgt.Definition};");
+            }
+        }
+        // Drop constraints not in target
+        var dropCons = current.Constraints
+            .Select(c => c.Name)
+            .Except(target.Constraints.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
+        foreach (var name in dropCons)
+            scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {name} CASCADE;");
+
+        // 3) Indexes: add, drop
+        var curIdx = new HashSet<string>(current.Indexes.Select(i => i.Definition), StringComparer.OrdinalIgnoreCase);
+        var tgtIdx = new HashSet<string>(target.Indexes.Select(i => i.Definition), StringComparer.OrdinalIgnoreCase);
+
+        // Add new indexes
+        foreach (var idx in target.Indexes)
+            if (!curIdx.Contains(idx.Definition))
+                scripts.Add(idx.Definition + ";");
+
+        // Drop indexes not in target
+        foreach (var idx in current.Indexes)
+        {
+            if (!tgtIdx.Contains(idx.Definition))
+            {
+                // Extract index name
+                var nameMatch = Regex.Match(idx.Definition, @"INDEX\s+""?(?<name>[\w_]+)""?", RegexOptions.IgnoreCase);
+                if (nameMatch.Success)
+                {
+                    var idxName = nameMatch.Groups["name"].Value;
+                    var dropSql = schema != null
+                        ? $"DROP INDEX \"{schema}\".\"{idxName}\";"
+                        : $"DROP INDEX \"{idxName}\";";
+                    scripts.Add(dropSql);
+                }
+            }
+        }
+
+        return scripts;
+    }
+}
+
 
 

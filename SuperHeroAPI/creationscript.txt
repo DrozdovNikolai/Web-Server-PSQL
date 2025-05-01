@@ -933,65 +933,227 @@ ALTER PROCEDURE ums.delete_procedure_user(integer, character varying)
 
 
     
-    CREATE OR REPLACE FUNCTION ums.select_table_definition(
-	table_name text)
-    RETURNS text
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+CREATE OR REPLACE FUNCTION ums.select_table_definition(table_name text)
+  RETURNS text
+  LANGUAGE plpgsql
 AS $BODY$
 DECLARE
-    table_def text;
-    column_def text;
-    constraint_def text;
-    row record;
+  reg_oid        oid;
+  schema_name    text;
+  tbl_name       text;
+  table_def      text := '';
+  column_def     text;
+  constraint_def text;
+  comment_text   text;
+  row_col        record;
+  row_con        record;
+  row_idx        record;
+  row_comment    record;
 BEGIN
-    -- Start building the CREATE TABLE statement
-    table_def := 'CREATE TABLE ' || table_name || ' (' || chr(10);
+  -- Получаем OID, схему и имя таблицы
+  SELECT (table_name::regclass)::oid,
+         n.nspname,
+         c.relname
+    INTO reg_oid, schema_name, tbl_name
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+   WHERE c.oid = table_name::regclass;
 
-    -- Fetch column definitions
-    FOR row IN
-        SELECT
-            a.attname AS column_name,
-            pg_catalog.format_type(a.atttypid, a.atttypmod) AS data_type,
-            CASE WHEN a.attnotnull THEN 'NOT NULL' ELSE '' END AS not_null
-        FROM
-            pg_attribute a
-        JOIN pg_class c ON a.attrelid = c.oid
-        JOIN pg_namespace n ON c.relnamespace = n.oid
-        WHERE
-            c.relname = table_name
-            AND a.attnum > 0
-            AND NOT a.attisdropped
-        ORDER BY a.attnum
-    LOOP
-        column_def := '    ' || row.column_name || ' ' || row.data_type || ' ' || row.not_null || ',' || chr(10);
-        table_def := table_def || column_def;
-    END LOOP;
+  -- 1) Начало CREATE TABLE
+  table_def := format(
+    'CREATE TABLE %I.%I (%s',
+    schema_name, tbl_name, E'\n'
+  );
 
-    -- Fetch constraint definitions (PRIMARY KEY, UNIQUE, etc.)
-    FOR row IN
-        SELECT
-            conname AS constraint_name,
-            pg_get_constraintdef(c.oid) AS constraint_def
-        FROM
-            pg_constraint c
-        JOIN pg_class rel ON c.conrelid = rel.oid
-        JOIN pg_namespace n ON rel.relnamespace = n.oid
-        WHERE
-            rel.relname = table_name
-    LOOP
-        constraint_def := '    ' || 'CONSTRAINT ' || row.constraint_name || ' ' || row.constraint_def || ',' || chr(10);
-        table_def := table_def || constraint_def;
-    END LOOP;
+  -- 1.1) Columns
+  FOR row_col IN
+    SELECT
+      a.attname,
+      format_type(a.atttypid, a.atttypmod) AS data_type,
+      pg_get_expr(ad.adbin, ad.adrelid)    AS default_value,
+      a.attnotnull
+    FROM pg_attribute a
+    LEFT JOIN pg_attrdef ad
+      ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum
+    WHERE a.attrelid = reg_oid
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+    ORDER BY a.attnum
+  LOOP
+    column_def := format(
+      '    %I %s%s%s,',
+      row_col.attname,
+      row_col.data_type,
+      COALESCE(' DEFAULT ' || row_col.default_value, ''),
+      CASE WHEN row_col.attnotnull THEN ' NOT NULL' ELSE '' END
+    );
+    table_def := table_def || column_def || E'\n';
+  END LOOP;
 
-    -- Remove the last comma and add closing parenthesis
-    table_def := rtrim(table_def, ',' || chr(10)) || chr(10) || ');';
+  -- 1.2) Constraints (PK, UNIQUE, CHECK, EXCLUDE, FK)
+  FOR row_con IN
+    SELECT
+      c.oid,
+      c.conname,
+      c.contype,
+      c.condeferrable,
+      c.condeferred,
+      -- Для CHECK
+      pg_get_expr(c.conbin, c.conrelid) AS check_expr,
+      -- Для FK
+      n2.nspname    AS ref_schema,
+      c2.relname    AS ref_table,
+      c.confmatchtype,
+      c.confupdtype,
+      c.confdeltype,
+      -- Списки ключей
+      ARRAY(
+        SELECT quote_ident(a2.attname)
+        FROM unnest(c.conkey) AS ck(attnum)
+        JOIN pg_attribute a2
+          ON a2.attrelid = c.conrelid AND a2.attnum = ck.attnum
+        ORDER BY array_position(c.conkey, ck.attnum)
+      ) AS key_cols,
+      ARRAY(
+        SELECT quote_ident(a3.attname)
+        FROM unnest(c.confkey) AS fk(attnum)
+        JOIN pg_attribute a3
+          ON a3.attrelid = c.confrelid AND a3.attnum = fk.attnum
+        ORDER BY array_position(c.confkey, fk.attnum)
+      ) AS ref_cols
+    FROM pg_constraint c
+    JOIN pg_class rel ON rel.oid = c.conrelid
+    JOIN pg_namespace n ON n.oid = rel.relnamespace
+    LEFT JOIN pg_class c2 ON c2.oid = c.confrelid
+    LEFT JOIN pg_namespace n2 ON n2.oid = c2.relnamespace
+    WHERE rel.oid = reg_oid
+    ORDER BY c.contype DESC
+  LOOP
+    constraint_def := '    CONSTRAINT ' || quote_ident(row_con.conname) || ' ';
 
-    -- Return the full table definition
-    RETURN table_def;
+    IF row_con.contype = 'p' THEN
+      constraint_def := constraint_def
+        || 'PRIMARY KEY ('
+        || array_to_string(row_con.key_cols, ', ')
+        || ')';
+
+    ELSIF row_con.contype = 'u' THEN
+      constraint_def := constraint_def
+        || 'UNIQUE ('
+        || array_to_string(row_con.key_cols, ', ')
+        || ')';
+
+    ELSIF row_con.contype = 'c' THEN
+      constraint_def := constraint_def
+        || 'CHECK (' || row_con.check_expr || ')';
+
+    ELSIF row_con.contype = 'x' THEN
+      -- EXCLUDE берем целиком через pg_get_constraintdef
+      constraint_def := constraint_def
+        || substring(
+             pg_get_constraintdef(row_con.oid)
+             FROM '^EXCLUDE.*'
+           );
+
+    ELSIF row_con.contype = 'f' THEN
+      constraint_def := constraint_def
+        || 'FOREIGN KEY ('
+        || array_to_string(row_con.key_cols, ', ')
+        || ') REFERENCES '
+        || quote_ident(row_con.ref_schema) || '.' || quote_ident(row_con.ref_table)
+        || '(' || array_to_string(row_con.ref_cols, ', ') || ')'
+        -- MATCH
+        || ' MATCH '
+        || CASE row_con.confmatchtype
+             WHEN 'f' THEN 'FULL'
+             WHEN 'p' THEN 'PARTIAL'
+             ELSE 'SIMPLE'
+           END
+        -- ON UPDATE
+        || ' ON UPDATE '
+        || CASE row_con.confupdtype
+             WHEN 'a' THEN 'NO ACTION'
+             WHEN 'r' THEN 'RESTRICT'
+             WHEN 'c' THEN 'CASCADE'
+             WHEN 'n' THEN 'SET NULL'
+             WHEN 'd' THEN 'SET DEFAULT'
+           END
+        -- ON DELETE
+        || ' ON DELETE '
+        || CASE row_con.confdeltype
+             WHEN 'a' THEN 'NO ACTION'
+             WHEN 'r' THEN 'RESTRICT'
+             WHEN 'c' THEN 'CASCADE'
+             WHEN 'n' THEN 'SET NULL'
+             WHEN 'd' THEN 'SET DEFAULT'
+           END;
+    END IF;
+
+    -- DEFERRABLE / INITIALLY ...
+    constraint_def := constraint_def
+      || CASE WHEN row_con.contype <> 'x'  -- EXCLUDE уже внутри
+              THEN
+                ' '
+                || CASE WHEN row_con.condeferrable THEN 'DEFERRABLE' ELSE 'NOT DEFERRABLE' END
+                || ' '
+                || CASE WHEN row_con.condeferred THEN 'INITIALLY DEFERRED' ELSE 'INITIALLY IMMEDIATE' END
+              ELSE ''
+         END
+      || ',';
+
+    table_def := table_def || constraint_def || E'\n';
+  END LOOP;
+
+  -- Убираем последнюю запятую и закрываем CREATE TABLE
+  table_def := regexp_replace(
+    table_def,
+    ',\s*\n$',
+    E'\n',
+    'm'
+  ) || ');' || E'\n\n';
+
+  -- 2) Комментарии на таблицу
+  SELECT obj_description(reg_oid, 'pg_class') INTO comment_text;
+  IF comment_text IS NOT NULL THEN
+    table_def := table_def
+      || format('COMMENT ON TABLE %I.%I IS %L;', schema_name, tbl_name, comment_text)
+      || E'\n';
+  END IF;
+
+  -- 2.1) Комментарии на столбцы
+  FOR row_comment IN
+    SELECT a.attname, col_description(a.attrelid, a.attnum) AS comment
+      FROM pg_attribute a
+     WHERE a.attrelid = reg_oid
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND col_description(a.attrelid,a.attnum) IS NOT NULL
+  LOOP
+    table_def := table_def
+      || format(
+           'COMMENT ON COLUMN %I.%I.%I IS %L;',
+           schema_name, tbl_name, row_comment.attname,
+           row_comment.comment
+         ) || E'\n';
+  END LOOP;
+  table_def := table_def || E'\n';
+
+  -- 3) Индексы
+  FOR row_idx IN
+    SELECT indexdef
+      FROM pg_indexes
+     WHERE schemaname = schema_name
+       AND tablename  = tbl_name
+     ORDER BY indexname
+  LOOP
+    table_def := table_def || row_idx.indexdef || ';' || E'\n';
+  END LOOP;
+
+  RETURN table_def;
 END;
 $BODY$;
+
+
 
 ALTER FUNCTION ums.select_table_definition(text)
     OWNER TO postgres;
