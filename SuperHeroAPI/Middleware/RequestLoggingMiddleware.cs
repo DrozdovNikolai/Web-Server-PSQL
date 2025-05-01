@@ -31,7 +31,13 @@ namespace SuperHeroAPI.Middleware
                 await _next(context);
                 return;
             }
-
+            // Пропустить логи для UpdateTableFromSql и DeleteTable
+            if (context.Request.Path.StartsWithSegments("/api/ProcedureList/UpdateTableFromSql", StringComparison.OrdinalIgnoreCase) ||
+                context.Request.Path.StartsWithSegments("/api/ProcedureList/DeleteTable", StringComparison.OrdinalIgnoreCase))
+            {
+                await _next(context);
+                return;
+            }
             // Попытаться достать username из JWT
             string? username = null;
             var authHeader = context.Request.Headers["Authorization"].FirstOrDefault();
