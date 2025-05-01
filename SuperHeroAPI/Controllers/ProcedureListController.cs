@@ -1195,10 +1195,10 @@ public static class DefinitionParser
 public static class SchemaDiffer
 {
     public static List<string> GenerateChangeScripts(
-        string schema,
-        string table,
-        TableDefinition current,
-        TableDefinition target)
+         string schema,
+         string table,
+         TableDefinition current,
+         TableDefinition target)
     {
         var fullName = schema != null
             ? $"\"{schema}\".\"{table}\""
@@ -1206,99 +1206,96 @@ public static class SchemaDiffer
 
         var scripts = new List<string>();
 
-        // 1) Columns: add, alter type, default, nullability, rename, drop
-        var curCols = current.Columns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
-        var tgtCols = target.Columns.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
+        //
+        // 1) Колонки (ADD, ALTER TYPE/DEFAULT/NULL, DROP)
+        //
+        var curCols = current.Columns
+            .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
+        var tgtCols = target.Columns
+            .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
 
-        // Add new columns
-        foreach (var tgt in target.Columns)
+        // 1.1 Add or alter existing
+        foreach (var kv in tgtCols)
         {
-            if (!curCols.ContainsKey(tgt.Name))
+            var name = kv.Key;
+            var col = kv.Value;
+            if (!curCols.ContainsKey(name))
             {
-                var sql = $"ALTER TABLE {fullName} ADD COLUMN {tgt.Name} {tgt.DataType}" +
-                          (tgt.Default != null ? $" DEFAULT {tgt.Default}" : "") +
-                          (tgt.NotNull ? " NOT NULL" : "");
+                // ADD COLUMN
+                var sql = $"ALTER TABLE {fullName} ADD COLUMN {col.Name} {col.DataType}" +
+                          (col.Default != null ? $" DEFAULT {col.Default}" : "") +
+                          (col.NotNull ? " NOT NULL" : "");
                 scripts.Add(sql + ";");
             }
-        }
-
-        // Modify existing columns
-        foreach (var cur in current.Columns)
-        {
-            if (tgtCols.TryGetValue(cur.Name, out var tgt))
+            else
             {
-                if (!string.Equals(cur.DataType, tgt.DataType, StringComparison.OrdinalIgnoreCase))
-                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} TYPE {tgt.DataType};");
-                if (cur.Default != tgt.Default)
+                var old = curCols[name];
+                if (!string.Equals(old.DataType, col.DataType, StringComparison.OrdinalIgnoreCase))
+                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} TYPE {col.DataType};");
+
+                if (old.Default != col.Default)
                 {
-                    if (tgt.Default != null)
-                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} SET DEFAULT {tgt.Default};");
+                    if (col.Default != null)
+                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} SET DEFAULT {col.Default};");
                     else
-                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} DROP DEFAULT;");
+                        scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} DROP DEFAULT;");
                 }
-                if (cur.NotNull != tgt.NotNull)
-                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {cur.Name} {(tgt.NotNull ? "SET" : "DROP")} NOT NULL;");
+
+                if (old.NotNull != col.NotNull)
+                    scripts.Add($"ALTER TABLE {fullName} ALTER COLUMN {name} {(col.NotNull ? "SET" : "DROP")} NOT NULL;");
             }
         }
-
-        // Drop columns not in target
-        var dropCols = current.Columns
-            .Select(c => c.Name)
-            .Except(target.Columns.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
-        foreach (var col in dropCols)
-            scripts.Add($"ALTER TABLE {fullName} DROP COLUMN {col} CASCADE;");
-
-        // 2) Constraints: add, alter, drop
-        var curCons = current.Constraints.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
-        var tgtCons = target.Constraints.ToDictionary(c => c.Name, StringComparer.OrdinalIgnoreCase);
-
-        // Add or alter constraints
-        foreach (var tgt in target.Constraints)
+        // 1.2 Drop columns missing in target
+        foreach (var name in curCols.Keys.Except(tgtCols.Keys, StringComparer.OrdinalIgnoreCase))
         {
-            if (!curCons.ContainsKey(tgt.Name))
+            scripts.Add($"ALTER TABLE {fullName} DROP COLUMN {name} CASCADE;");
+        }
+
+        //
+        // 2) Constraints
+        //
+        // 2.1 Сгруппировать и убрать дубли в current и target
+        var curCons = current.Constraints
+            .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
+
+        var tgtCons = target.Constraints
+            .GroupBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase);
+
+        // 2.2 Добавить новые и обновить изменённые
+        foreach (var kv in tgtCons)
+        {
+            var name = kv.Key;
+            var def = kv.Value.Definition;
+            if (!curCons.ContainsKey(name))
             {
-                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {tgt.Name} {tgt.Definition};");
+                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {name} {def};");
             }
-            else if (!string.Equals(curCons[tgt.Name].Definition, tgt.Definition, StringComparison.OrdinalIgnoreCase))
+            else if (!string.Equals(curCons[name].Definition, def, StringComparison.OrdinalIgnoreCase))
             {
-                // Drop and re-create altered constraint
-                scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {tgt.Name} CASCADE;");
-                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {tgt.Name} {tgt.Definition};");
+                scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {name} CASCADE;");
+                scripts.Add($"ALTER TABLE {fullName} ADD CONSTRAINT {name} {def};");
             }
         }
-        // Drop constraints not in target
-        var dropCons = current.Constraints
-            .Select(c => c.Name)
-            .Except(target.Constraints.Select(t => t.Name), StringComparer.OrdinalIgnoreCase);
-        foreach (var name in dropCons)
+        // 2.3 Удалить лишние
+        foreach (var name in curCons.Keys.Except(tgtCons.Keys, StringComparer.OrdinalIgnoreCase))
+        {
             scripts.Add($"ALTER TABLE {fullName} DROP CONSTRAINT {name} CASCADE;");
+        }
 
-        // 3) Indexes: add, drop
+        //
+        // 3) Индексы
+        //
         var curIdx = new HashSet<string>(current.Indexes.Select(i => i.Definition), StringComparer.OrdinalIgnoreCase);
-        var tgtIdx = new HashSet<string>(target.Indexes.Select(i => i.Definition), StringComparer.OrdinalIgnoreCase);
-
-        // Add new indexes
         foreach (var idx in target.Indexes)
+        {
             if (!curIdx.Contains(idx.Definition))
                 scripts.Add(idx.Definition + ";");
-
-        // Drop indexes not in target
-        foreach (var idx in current.Indexes)
-        {
-            if (!tgtIdx.Contains(idx.Definition))
-            {
-                // Extract index name
-                var nameMatch = Regex.Match(idx.Definition, @"INDEX\s+""?(?<name>[\w_]+)""?", RegexOptions.IgnoreCase);
-                if (nameMatch.Success)
-                {
-                    var idxName = nameMatch.Groups["name"].Value;
-                    var dropSql = schema != null
-                        ? $"DROP INDEX \"{schema}\".\"{idxName}\";"
-                        : $"DROP INDEX \"{idxName}\";";
-                    scripts.Add(dropSql);
-                }
-            }
         }
+        // (По желанию: удаление индексов, которых нет в целевом, аналогично constraints)
 
         return scripts;
     }
