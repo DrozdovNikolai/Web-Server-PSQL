@@ -81,120 +81,7 @@ public class ProcedureListController : ControllerBase
     }
 
 
-    [HttpPost("CreateProcedureFromSql")]
-    public async Task<IActionResult> CreateProcedureFromSql([FromBody] string sql)
-    {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
-
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
-
-        using var connection = _context.Database.GetDbConnection();
-        try
-        {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
-            {
-                try
-                {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    var procedureName = ExtractProcedureNameFromSql(sql);
-                    if (string.IsNullOrEmpty(procedureName))
-                    {
-                        return BadRequest("Unable to extract procedure name from the SQL code.");
-                    }
-
-                    using var command = connection.CreateCommand();
-                    command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync();
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-                    using var alterCommand = connection.CreateCommand();
-                    alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
-                    await alterCommand.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    // Add new row to ProcedureUser table
-                    var procedureUser = new ProcedureUser
-                    {
-                        ProcedureName = procedureName, // Corrected to use the variable
-                        UserId = user.Id
-                    };
-
-                    _context.ProcedureUsers.Add(procedureUser);
-                    await _context.SaveChangesAsync(); // Save changes to the database
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Procedure created successfully with given SQL for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error creating procedure.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
-            }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Procedure creation failed for all roles.",
-                rolesTried = roles
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing procedure creation SQL.",
-                error = ex.Message
-            });
-        }
-    }
-
-
-    private string ExtractProcedureNameFromSql(string sql)
-    {
-        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+(public\.)?([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[2].Value : null; // Use Groups[2] to get the procedure name without "public."
-    }
+ 
 
 
 
@@ -321,102 +208,248 @@ public class ProcedureListController : ControllerBase
             });
         }
     }
-    [HttpDelete("DeleteProcedure/{procedureName}")]
-    public async Task<IActionResult> DeleteProcedure(string procedureName)
-    {
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
 
-        using var connection = _context.Database.GetDbConnection();
+    [HttpPut("UpdateProcedureFromSql")]
+public async Task<IActionResult> UpdateProcedureFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
+    {
+        return BadRequest("SQL code is required.");
+    }
+
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
+
+    string username = User.Identity.Name;
+    if (string.IsNullOrEmpty(username))
+    {
+        return Unauthorized("User is not authorized.");
+    }
+
+    var errors = new List<object>();
+
+    foreach (var role in roles)
+    {
         try
         {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
+            // Устанавливаем роль для текущего пользователя
+            using (var roleCommand = connection.CreateCommand())
             {
-                try
-                {
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
 
-                    using var command = connection.CreateCommand();
-                    command.CommandText = $"DROP PROCEDURE IF EXISTS {procedureName};";
+                var procedureName = ExtractProcedureNameFromSql(sql);
+                if (string.IsNullOrEmpty(procedureName))
+                {
+                    return BadRequest("Unable to extract procedure name from the SQL code.");
+                }
+
+                // Выполняем удаление процедуры, если она существует
+                using (var dropCommand = connection.CreateCommand())
+                {
+                    dropCommand.CommandText = $"DROP PROCEDURE IF EXISTS {procedureName};";
+                    await dropCommand.ExecuteNonQueryAsync();
+                }
+
+                // Выполняем обновление процедуры
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-                    using var alterCommand = connection.CreateCommand();
+                }
+
+                // Изменяем владельца процедуры
+                using (var alterCommand = connection.CreateCommand())
+                {
                     alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
                     await alterCommand.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    // Remove the corresponding ProcedureUser row
-                    var existingProcedureUser = await _context.ProcedureUsers
-                        .FirstOrDefaultAsync(pu => pu.ProcedureName == procedureName && pu.UserId == user.Id);
-
-                    if (existingProcedureUser != null)
-                    {
-                        _context.ProcedureUsers.Remove(existingProcedureUser);
-                        await _context.SaveChangesAsync(); // Save changes to the database
-                    }
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Procedure '{procedureName}' deleted successfully for role {role}.",
-                        role = role
-                    });
                 }
-                catch (PostgresException pgEx)
+
+                // Сбрасываем роль
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Ищем пользователя по имени
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error deleting procedure.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    return NotFound("User not found.");
                 }
-                catch (Exception ex)
+
+                // Удаляем старую запись из ProcedureUser, если она существует
+                var existingProcedureUser = await _context.ProcedureUsers
+                    .FirstOrDefaultAsync(pu => pu.ProcedureName == procedureName && pu.UserId == user.Id);
+
+                if (existingProcedureUser != null)
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    _context.ProcedureUsers.Remove(existingProcedureUser);
                 }
+
+                // Добавляем новую запись в ProcedureUser
+                var procedureUser = new ProcedureUser
+                {
+                    ProcedureName = procedureName,
+                    UserId = user.Id
+                };
+
+                _context.ProcedureUsers.Add(procedureUser);
+                await _context.SaveChangesAsync(); // Сохраняем изменения в базе
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Procedure updated successfully with given SQL for role {role}.",
+                    role = role
+                });
             }
-
-            return StatusCode(403, new
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new
             {
-                success = false,
-                message = "Delete failed for all roles.",
-                rolesTried = roles
+                role,
+                error = pgEx.MessageText,
+                detail = pgEx.Detail,
+                hint = pgEx.Hint,
+                code = pgEx.SqlState
             });
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error deleting procedure.",
-                error = ex.Message
-            });
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new { role, error = ex.Message });
+            continue;
         }
     }
 
+    // Если для всех ролей не удалось обновить процедуру
+    return StatusCode(403, new
+    {
+        success = false,
+        message = "Procedure update failed for all roles.",
+        errors
+    });
+}
+[HttpDelete("DeleteProcedure/{procedureName}")]
+public async Task<IActionResult> DeleteProcedure(string procedureName)
+{
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    using var connection = _context.Database.GetDbConnection();
+    try
+    {
+        await connection.OpenAsync();
+
+        string username = User.Identity.Name;
+        if (string.IsNullOrEmpty(username))
+        {
+            return Unauthorized("User is not authorized.");
+        }
+
+        var errors = new List<object>();
+
+        foreach (var role in roles)
+        {
+            try
+            {
+                // Set the role for the current user
+                using var roleCommand = connection.CreateCommand();
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // If schema is specified in procedureName (e.g., myschema.myprocedure), handle it accordingly
+                var procedureFullName = ExtractProcedureNameFromSql(procedureName);
+                if (string.IsNullOrEmpty(procedureFullName))
+                {
+                    return BadRequest("Unable to extract procedure name from the SQL code.");
+                }
+
+                // Drop the procedure if it exists
+                using var dropCommand = connection.CreateCommand();
+                dropCommand.CommandText = $"DROP PROCEDURE IF EXISTS {procedureFullName};";
+                await dropCommand.ExecuteNonQueryAsync();
+
+                // Reset role
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Find user from the database
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
+                {
+                    return NotFound("User not found.");
+                }
+
+                // Remove the corresponding ProcedureUser row
+                var existingProcedureUser = await _context.ProcedureUsers
+                    .FirstOrDefaultAsync(pu => pu.ProcedureName == procedureName && pu.UserId == user.Id);
+
+                if (existingProcedureUser != null)
+                {
+                    _context.ProcedureUsers.Remove(existingProcedureUser);
+                    await _context.SaveChangesAsync(); // Save changes to the database
+                }
+
+                // Return success message for this role
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Procedure '{procedureName}' deleted successfully for role {role}.",
+                    role = role
+                });
+            }
+            catch (PostgresException pgEx)
+            {
+                // Log the error and continue for other roles
+                errors.Add(new
+                {
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
+                });
+                continue;
+            }
+            catch (Exception ex)
+            {
+                // Log the error and continue for other roles
+                errors.Add(new { role, error = ex.Message });
+                continue;
+            }
+        }
+
+        // If all roles failed, return errors
+        return StatusCode(403, new
+        {
+            success = false,
+            message = "Delete failed for all roles.",
+            errors
+        });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new
+        {
+            success = false,
+            message = "Error deleting procedure.",
+            error = ex.Message
+        });
+    }
+}
 
 
     [HttpGet("GetProcedureInfo/{procedureName}")]
