@@ -479,19 +479,22 @@ public async Task<IActionResult> DeleteTrigger(string triggerName)
     private string QuoteIdent(string ident)
     => "\"" + ident.Replace("\"", "\"\"") + "\"";
     private string ExtractTriggerNameFromSql(string sql)
-{
-    // Modify regex to support any schema (not just public)
-    var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+TRIGGER\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)|([a-zA-Z0-9_]+)\s*\(", RegexOptions.IgnoreCase);
-
-    // If schema is present (Group 1), return "schema.trigger"
-    if (match.Groups[1].Success)
     {
-        return $"{match.Groups[1].Value}.{match.Groups[2].Value}";
-    }
+        // Ищем схему и имя сразу после "CREATE [OR REPLACE] TRIGGER"
+        var match = Regex.Match(sql,
+            @"CREATE\s+(?:OR\s+REPLACE\s+)?TRIGGER\s+" +        // начало создания триггера
+            @"(?:(?<schema>[\w]+)\.)?(?<trigger>[\w]+)\b",      // схема и имя триггера
+            RegexOptions.IgnoreCase);
 
-    // If no schema is provided, return only the trigger name (Group 3)
-    return match.Groups[3].Success ? match.Groups[3].Value : null;
-}
+        if (!match.Success)
+            return null;
+
+        // Если схема указана, возвращаем "schema.trigger", иначе просто "trigger"
+        if (match.Groups["schema"].Success)
+            return $"{match.Groups["schema"].Value}.{match.Groups["trigger"].Value}";
+        else
+            return match.Groups["trigger"].Value;
+    }
 
 }
 
