@@ -80,136 +80,7 @@ public class ProcedureListController : ControllerBase
         public string DataType { get; set; }
     }
 
-
- 
-
-
-
-    [HttpPut("UpdateProcedureFromSql")]
-    public async Task<IActionResult> UpdateProcedureFromSql([FromBody] string sql)
-    {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
-
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
-
-        using var connection = _context.Database.GetDbConnection();
-        try
-        {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
-            {
-                try
-                {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    var procedureName = ExtractProcedureNameFromSql(sql);
-                    if (string.IsNullOrEmpty(procedureName))
-                    {
-                        return BadRequest("Unable to extract procedure name from the SQL code.");
-                    }
-
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    using var dropCommand = connection.CreateCommand();
-                    dropCommand.CommandText = $"DROP PROCEDURE IF EXISTS {procedureName};";
-                    await dropCommand.ExecuteNonQueryAsync();
-
-
-                    using var command = connection.CreateCommand();
-                    command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync();
-
-                    // Get the username from the JWT token
-
-                    using var alterCommand = connection.CreateCommand();
-                    alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
-                    await alterCommand.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    // Remove the old ProcedureUser row if it exists
-                    var existingProcedureUser = await _context.ProcedureUsers
-                        .FirstOrDefaultAsync(pu => pu.ProcedureName == procedureName && pu.UserId == user.Id);
-
-                    if (existingProcedureUser != null)
-                    {
-                        _context.ProcedureUsers.Remove(existingProcedureUser);
-                    }
-
-                    // Add new ProcedureUser row
-                    var procedureUser = new ProcedureUser
-                    {
-                        ProcedureName = procedureName,
-                        UserId = user.Id
-                    };
-
-                    _context.ProcedureUsers.Add(procedureUser);
-                    await _context.SaveChangesAsync(); // Save changes to the database
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Procedure updated successfully with given SQL for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error updating procedure.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
-            }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Procedure update failed for all roles.",
-                rolesTried = roles
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing procedure update SQL.",
-                error = ex.Message
-            });
-        }
-    }
-
-    [HttpPut("UpdateProcedureFromSql")]
+[HttpPut("UpdateProcedureFromSql")]
 public async Task<IActionResult> UpdateProcedureFromSql([FromBody] string sql)
 {
     if (string.IsNullOrEmpty(sql))
@@ -339,6 +210,7 @@ public async Task<IActionResult> UpdateProcedureFromSql([FromBody] string sql)
         errors
     });
 }
+
 [HttpDelete("DeleteProcedure/{procedureName}")]
 public async Task<IActionResult> DeleteProcedure(string procedureName)
 {
