@@ -79,7 +79,125 @@ public class ProcedureListController : ControllerBase
         public string ParameterName { get; set; }
         public string DataType { get; set; }
     }
+[HttpPost("CreateProcedureFromSql")]
+public async Task<IActionResult> CreateProcedureFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
+    {
+        return BadRequest("SQL code is required.");
+    }
 
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    using var connection = _context.Database.GetDbConnection();
+    try
+    {
+        await connection.OpenAsync();
+
+        string username = User.Identity.Name;
+        if (string.IsNullOrEmpty(username))
+        {
+            return Unauthorized("User is not authorized.");
+        }
+
+        var errors = new List<object>();
+
+        foreach (var role in roles)
+        {
+            try
+            {
+                // Set the role for the current user
+                using var roleCommand = connection.CreateCommand();
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                var procedureName = ExtractProcedureNameFromSql(sql);
+                if (string.IsNullOrEmpty(procedureName))
+                {
+                    return BadRequest("Unable to extract procedure name from the SQL code.");
+                }
+
+                // Execute the procedure creation SQL
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                await command.ExecuteNonQueryAsync();
+
+                // Alter the procedure owner to the current user
+                using var alterCommand = connection.CreateCommand();
+                alterCommand.CommandText = $"ALTER PROCEDURE {procedureName} OWNER TO \"{username}\";";
+                await alterCommand.ExecuteNonQueryAsync();
+
+                // Reset role
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Find user from the database
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
+                {
+                    return NotFound("User not found.");
+                }
+
+                // Add new row to ProcedureUser table
+                var procedureUser = new ProcedureUser
+                {
+                    ProcedureName = procedureName, 
+                    UserId = user.Id
+                };
+
+                _context.ProcedureUsers.Add(procedureUser);
+                await _context.SaveChangesAsync(); // Save changes to the database
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Procedure created successfully with given SQL for role {role}.",
+                    role = role
+                });
+            }
+            catch (PostgresException pgEx)
+            {
+                // Log the error for the current role and continue to the next role
+                errors.Add(new
+                {
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
+                });
+                continue;
+            }
+            catch (Exception ex)
+            {
+                // Log the error and continue for other roles
+                errors.Add(new { role, error = ex.Message });
+                continue;
+            }
+        }
+
+        // If all roles failed, return errors
+        return StatusCode(403, new
+        {
+            success = false,
+            message = "Procedure creation failed for all roles.",
+            errors
+        });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new
+        {
+            success = false,
+            message = "Error executing procedure creation SQL.",
+            error = ex.Message
+        });
+    }
+}
 [HttpPut("UpdateProcedureFromSql")]
 public async Task<IActionResult> UpdateProcedureFromSql([FromBody] string sql)
 {
