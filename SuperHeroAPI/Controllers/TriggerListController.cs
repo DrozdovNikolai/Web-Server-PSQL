@@ -68,288 +68,341 @@ public class TriggerListController : ControllerBase
         return roles;
     }
 
-    [HttpPost("CreateTriggerFromSql")]
-    public async Task<IActionResult> CreateTriggerFromSql([FromBody] string sql)
+ 
+[HttpPost("CreateTriggerFromSql")]
+public async Task<IActionResult> CreateTriggerFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
     {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
-
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
-
-        using var connection = _context.Database.GetDbConnection();
-        try
-        {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
-            {
-                try
-                {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    // Extract trigger name (you can modify the regex to suit your SQL trigger naming conventions)
-                    var triggerName = ExtractTriggerNameFromSql(sql);
-                    if (string.IsNullOrEmpty(triggerName))
-                    {
-                        return BadRequest("Unable to extract trigger name from the SQL code.");
-                    }
-
-                    // Execute the SQL to create the trigger
-                    using var command = connection.CreateCommand();
-                    command.CommandText = sql;
-                    await command.ExecuteNonQueryAsync();
-
-                    // Get the username from the JWT token
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    // Add entry to TriggerUsers (assuming similar logic as TableUsers)
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    var triggerUser = new TriggerUser
-                    {
-                        TriggerName = triggerName,
-                        UserId = user.Id
-                    };
-
-                    _context.TriggerUsers.Add(triggerUser);
-                    await _context.SaveChangesAsync();
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Trigger '{triggerName}' created successfully for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error creating trigger.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
-            }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Trigger creation failed for all roles.",
-                rolesTried = roles
-            });
-        }
-        catch (Exception ex)
-        {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing trigger creation SQL.",
-                error = ex.Message
-            });
-        }
+        return BadRequest("SQL code is required.");
     }
 
-
-
-    [HttpPut("UpdateTriggerFromSql")]
-    public async Task<IActionResult> UpdateTriggerFromSql([FromBody] string sql)
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
     {
-        if (string.IsNullOrEmpty(sql))
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    using var connection = _context.Database.GetDbConnection();
+    try
+    {
+        await connection.OpenAsync();
+
+        string username = User.Identity.Name;
+        if (string.IsNullOrEmpty(username))
         {
-            return BadRequest("SQL code is required.");
+            return Unauthorized("User is not authorized.");
         }
 
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
+        var errors = new List<object>();
+
+        foreach (var role in roles)
         {
-            return StatusCode(403, new { message = "No roles available to set." });
+            try
+            {
+                // Set the role for the current user
+                using var roleCommand = connection.CreateCommand();
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                var triggerName = ExtractTriggerNameFromSql(sql);
+                if (string.IsNullOrEmpty(triggerName))
+                {
+                    return BadRequest("Unable to extract trigger name from the SQL code.");
+                }
+
+                // Execute the SQL to create the trigger
+                using var command = connection.CreateCommand();
+                command.CommandText = sql;
+                await command.ExecuteNonQueryAsync();
+
+                // Alter the trigger ownership to the current user
+                using var alterCommand = connection.CreateCommand();
+                alterCommand.CommandText = $"ALTER TRIGGER {triggerName} OWNER TO \"{username}\";";
+                await alterCommand.ExecuteNonQueryAsync();
+
+                // Reset role
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Find user from the database
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
+                {
+                    return NotFound("User not found.");
+                }
+
+                // Add entry to TriggerUsers (assuming similar logic as TableUsers)
+                var triggerUser = new TriggerUser
+                {
+                    TriggerName = triggerName,
+                    UserId = user.Id
+                };
+
+                _context.TriggerUsers.Add(triggerUser);
+                await _context.SaveChangesAsync(); // Save changes to the database
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Trigger '{triggerName}' created successfully for role {role}.",
+                    role = role
+                });
+            }
+            catch (PostgresException pgEx)
+            {
+                // Log the error and continue for other roles
+                errors.Add(new
+                {
+                    role,
+                    error = pgEx.MessageText,
+                    detail = pgEx.Detail,
+                    hint = pgEx.Hint,
+                    code = pgEx.SqlState
+                });
+                continue;
+            }
+            catch (Exception ex)
+            {
+                // Log the error and continue for other roles
+                errors.Add(new { role, error = ex.Message });
+                continue;
+            }
         }
 
-        using var connection = _context.Database.GetDbConnection();
+        // If all roles failed, return errors
+        return StatusCode(403, new
+        {
+            success = false,
+            message = "Trigger creation failed for all roles.",
+            errors
+        });
+    }
+    catch (Exception ex)
+    {
+        return StatusCode(500, new
+        {
+            success = false,
+            message = "Error executing trigger creation SQL.",
+            error = ex.Message
+        });
+    }
+}
+
+
+[HttpPut("UpdateTriggerFromSql")]
+public async Task<IActionResult> UpdateTriggerFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
+    {
+        return BadRequest("SQL code is required.");
+    }
+
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
+
+    string username = User.Identity.Name;
+    if (string.IsNullOrEmpty(username))
+    {
+        return Unauthorized("User is not authorized.");
+    }
+
+    var errors = new List<object>();
+
+    foreach (var role in roles)
+    {
         try
         {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
+            // Устанавливаем роль для текущего пользователя
+            using (var roleCommand = connection.CreateCommand())
             {
-                try
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                var triggerName = ExtractTriggerNameFromSql(sql);
+                if (string.IsNullOrEmpty(triggerName))
                 {
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                    return BadRequest("Unable to extract trigger name from the SQL code.");
+                }
 
-                    var triggerName = ExtractTriggerNameFromSql(sql);
-                    if (string.IsNullOrEmpty(triggerName))
-                    {
-                        return BadRequest("Unable to extract trigger name from the SQL code.");
-                    }
-
-                    // Drop the trigger if it exists
-                    using var dropCommand = connection.CreateCommand();
+                // Выполняем удаление триггера, если он существует
+                using (var dropCommand = connection.CreateCommand())
+                {
                     dropCommand.CommandText = $"DROP TRIGGER IF EXISTS {triggerName} ON <table_name>;";
                     await dropCommand.ExecuteNonQueryAsync();
+                }
 
-                    // Execute the new trigger creation SQL (for update)
-                    using var command = connection.CreateCommand();
+                // Выполняем обновление триггера
+                using (var command = connection.CreateCommand())
+                {
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
-
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Trigger '{triggerName}' updated successfully for role {role}.",
-                        role = role
-                    });
                 }
-                catch (PostgresException pgEx)
+
+                // Изменяем владельца триггера
+                using (var alterCommand = connection.CreateCommand())
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error updating trigger.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    alterCommand.CommandText = $"ALTER TRIGGER {triggerName} OWNER TO \"{username}\";";
+                    await alterCommand.ExecuteNonQueryAsync();
                 }
-                catch (Exception ex)
+
+                // Сбрасываем роль
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Ищем пользователя по имени
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    return NotFound("User not found.");
                 }
+
+                // Добавляем запись в таблицу TriggerUser
+                var triggerUser = new TriggerUser
+                {
+                    TriggerName = triggerName,
+                    UserId = user.Id
+                };
+
+                _context.TriggerUsers.Add(triggerUser);
+                await _context.SaveChangesAsync(); // Сохраняем изменения в базе
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Trigger '{triggerName}' updated successfully for role {role}.",
+                    role = role
+                });
             }
-
-            return StatusCode(403, new
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new
             {
-                success = false,
-                message = "Trigger update failed for all roles.",
-                rolesTried = roles
+                role,
+                error = pgEx.MessageText,
+                detail = pgEx.Detail,
+                hint = pgEx.Hint,
+                code = pgEx.SqlState
             });
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing trigger update SQL.",
-                error = ex.Message
-            });
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new { role, error = ex.Message });
+            continue;
         }
     }
-    [HttpDelete("DeleteTrigger/{triggerName}")]
-    public async Task<IActionResult> DeleteTrigger(string triggerName)
-    {
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
 
-        using var connection = _context.Database.GetDbConnection();
+    // Если для всех ролей не удалось обновить триггер
+    return StatusCode(403, new
+    {
+        success = false,
+        message = "Trigger update failed for all roles.",
+        errors
+    });
+}
+
+[HttpDelete("DeleteTrigger/{triggerName}")]
+public async Task<IActionResult> DeleteTrigger(string triggerName)
+{
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
+
+    var errors = new List<object>();
+
+    foreach (var role in roles)
+    {
         try
         {
-            await connection.OpenAsync();
+            // Устанавливаем роль для текущего пользователя
+            using var roleCommand = connection.CreateCommand();
+            roleCommand.CommandText = $"SET ROLE \"{role}\";";
+            await roleCommand.ExecuteNonQueryAsync();
 
-            foreach (var role in roles)
+            // Обрабатываем полное имя триггера (с учётом схемы)
+            var triggerFullName = ExtractTriggerNameFromSql(triggerName);
+            if (string.IsNullOrEmpty(triggerFullName))
             {
-                try
-                {
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    // Drop the trigger if it exists
-                    using var command = connection.CreateCommand();
-                    command.CommandText = $"DROP TRIGGER IF EXISTS {triggerName} ON <table_name>;";
-                    await command.ExecuteNonQueryAsync();
-
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Trigger '{triggerName}' deleted successfully for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
-                {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error deleting trigger.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
+                return BadRequest("Unable to extract trigger name from the SQL code.");
             }
 
-            return StatusCode(403, new
+            // Выполняем удаление триггера
+            using var command = connection.CreateCommand();
+            command.CommandText = $"DROP TRIGGER IF EXISTS {triggerFullName} ON <table_name>;";
+            await command.ExecuteNonQueryAsync();
+
+            // Сбрасываем роль
+            roleCommand.CommandText = "RESET ROLE";
+            await roleCommand.ExecuteNonQueryAsync();
+
+            // Возвращаем успешный ответ для этой роли
+            return Ok(new
             {
-                success = false,
-                message = "Trigger deletion failed for all roles.",
-                rolesTried = roles
+                success = true,
+                message = $"Trigger '{triggerFullName}' deleted successfully for role {role}.",
+                role = role
             });
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем ошибку для текущей роли и продолжаем для других
+            errors.Add(new
+            {
+                role,
+                error = pgEx.MessageText,
+                detail = pgEx.Detail,
+                hint = pgEx.Hint,
+                code = pgEx.SqlState
+            });
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing trigger deletion SQL.",
-                error = ex.Message
-            });
+            // Логируем ошибку для текущей роли и продолжаем для других
+            errors.Add(new { role, error = ex.Message });
+            continue;
         }
     }
-    private string ExtractTriggerNameFromSql(string sql)
+
+    // Если для всех ролей не удалось удалить триггер
+    return StatusCode(403, new
     {
-        var match = Regex.Match(sql, @"CREATE\s+TRIGGER\s+([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[1].Value : null; // Extracts trigger name.
+        success = false,
+        message = "Trigger deletion failed for all roles.",
+        errors
+    });
+}
+private string ExtractTriggerNameFromSql(string sql)
+{
+    // Modify regex to support any schema (not just public)
+    var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+TRIGGER\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)|([a-zA-Z0-9_]+)\s*\(", RegexOptions.IgnoreCase);
+
+    // If schema is present (Group 1), return "schema.trigger"
+    if (match.Groups[1].Success)
+    {
+        return $"{match.Groups[1].Value}.{match.Groups[2].Value}";
     }
+
+    // If no schema is provided, return only the trigger name (Group 3)
+    return match.Groups[3].Success ? match.Groups[3].Value : null;
+}
 
 }
 
