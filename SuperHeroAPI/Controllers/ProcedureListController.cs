@@ -79,6 +79,20 @@ public class ProcedureListController : ControllerBase
         public string ParameterName { get; set; }
         public string DataType { get; set; }
     }
+    private string ExtractProcedureNameFromSql(string sql)
+{
+    // Modify regex to support any schema (not just public)
+    var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+PROCEDURE\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)|([a-zA-Z0-9_]+)\s*\(", RegexOptions.IgnoreCase);
+    
+    // If a schema is present (Group 1), return schema + procedure name
+    if (match.Groups[1].Success)
+    {
+        return $"{match.Groups[1].Value}.{match.Groups[2].Value}";
+    }
+
+    // If no schema is provided, just return the procedure name (Group 3)
+    return match.Groups[3].Success ? match.Groups[3].Value : null;
+}
 [HttpPost("CreateProcedureFromSql")]
 public async Task<IActionResult> CreateProcedureFromSql([FromBody] string sql)
 {
