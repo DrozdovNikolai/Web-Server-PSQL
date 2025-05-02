@@ -75,316 +75,337 @@ public class FunctionsListController : ControllerBase
         return roles;
     }
 
-    [HttpPut("UpdateFunctionFromSql")]
-    public async Task<IActionResult> UpdateFunctionFromSql([FromBody] string sql)
+[HttpPut("UpdateFunctionFromSql")]
+public async Task<IActionResult> UpdateFunctionFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
     {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
+        return BadRequest("SQL code is required.");
+    }
 
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
 
-        using var connection = _context.Database.GetDbConnection();
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
+
+    string username = User.Identity.Name;
+    if (string.IsNullOrEmpty(username))
+    {
+        return Unauthorized("User is not authorized.");
+    }
+
+    var errors = new List<object>();
+
+    foreach (var role in roles)
+    {
         try
         {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
+            // Устанавливаем роль для текущего пользователя
+            using (var roleCommand = connection.CreateCommand())
             {
-                try
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                var functionName = ExtractFunctionNameFromSql(sql);
+                if (string.IsNullOrEmpty(functionName))
                 {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                    return BadRequest("Unable to extract function name from the SQL code.");
+                }
 
-                    var functionName = ExtractFunctionNameFromSql(sql);
-                    if (string.IsNullOrEmpty(functionName))
-                    {
-                        return BadRequest("Unable to extract function name from the SQL code.");
-                    }
-
-                    // Execute the SQL to drop the function if it exists
-                    using var dropCommand = connection.CreateCommand();
+                // Выполняем SQL для удаления функции, если она существует
+                using (var dropCommand = connection.CreateCommand())
+                {
                     dropCommand.CommandText = $"DROP FUNCTION IF EXISTS {functionName};";
                     await dropCommand.ExecuteNonQueryAsync();
+                }
 
-                    // Execute the dynamic function creation SQL (for update)
-                    using var command = connection.CreateCommand();
+                // Выполняем обновление функции (динамическое создание)
+                using (var command = connection.CreateCommand())
+                {
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
+                }
 
-                    // Get the username from the JWT token
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-                    // Set the function's owner to the user's username
-                    using var alterCommand = connection.CreateCommand();
+                // Устанавливаем владельца функции
+                using (var alterCommand = connection.CreateCommand())
+                {
                     alterCommand.CommandText = $"ALTER FUNCTION {functionName} OWNER TO \"{username}\";";
                     await alterCommand.ExecuteNonQueryAsync();
+                }
 
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Function updated successfully and ownership set to {username} for role {role}.",
-                        role = role
-                    });
-                }
-                catch (PostgresException pgEx)
+                // Сбрасываем роль
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Записываем успешный результат для этой роли
+                return Ok(new
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error updating function.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
+                    success = true,
+                    message = $"Function updated successfully and ownership set to {username} for role {role}.",
+                    role = role
+                });
             }
-
-            return StatusCode(403, new
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем и продолжаем для других ролей
+            errors.Add(new
             {
-                success = false,
-                message = "Function update failed for all roles.",
-                rolesTried = roles
+                role,
+                error = pgEx.MessageText,
+                detail = pgEx.Detail,
+                hint = pgEx.Hint,
+                code = pgEx.SqlState
             });
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing function update SQL.",
-                error = ex.Message
-            });
+            // Логируем и продолжаем для других ролей
+            errors.Add(new { role, error = ex.Message });
+            continue;
         }
     }
 
-    [HttpDelete("DeleteFunction/{functionName}")]
-    public async Task<IActionResult> DeleteFunction(string functionName)
+    // Если все роли не прошли — возвращаем ошибку
+    return StatusCode(403, new
     {
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
+        success = false,
+        message = "Function update failed for all roles.",
+        errors
+    });
+}
 
-        using var connection = _context.Database.GetDbConnection();
+[HttpDelete("DeleteFunction/{functionName}")]
+public async Task<IActionResult> DeleteFunction(string functionName)
+{
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
+    {
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
+
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
+
+    string username = User.Identity.Name;
+    if (string.IsNullOrEmpty(username))
+    {
+        return Unauthorized("User is not authorized.");
+    }
+
+    var errors = new List<object>();
+
+    foreach (var role in roles)
+    {
         try
         {
-            await connection.OpenAsync();
-
-            foreach (var role in roles)
+            // Устанавливаем роль для текущего пользователя
+            using (var roleCommand = connection.CreateCommand())
             {
-                try
-                {
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
 
-                    using var command = connection.CreateCommand();
+                // Выполняем удаление функции, если она существует
+                using (var command = connection.CreateCommand())
+                {
                     command.CommandText = $"DROP FUNCTION IF EXISTS {functionName};";
                     await command.ExecuteNonQueryAsync();
-
-                    // Get the username from the JWT token
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-                    string username = User.Identity.Name;
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-
-                    // Remove the corresponding FunctionUser row
-                    var existingFunctionUser = await _context.FunctionUsers
-                        .FirstOrDefaultAsync(fu => fu.FunctionName == functionName && fu.UserId == user.Id);
-
-                    if (existingFunctionUser != null)
-                    {
-                        _context.FunctionUsers.Remove(existingFunctionUser);
-                        await _context.SaveChangesAsync(); // Save changes to the database
-                    }
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Function '{functionName}' deleted successfully for role {role}.",
-                        role = role
-                    });
                 }
-                catch (PostgresException pgEx)
+
+                // Сбрасываем роль
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Находим пользователя из JWT
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error deleting function.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    return NotFound("User not found.");
                 }
-                catch (Exception ex)
+
+                // Удаляем соответствующую запись в FunctionUser
+                var existingFunctionUser = await _context.FunctionUsers
+                    .FirstOrDefaultAsync(fu => fu.FunctionName == functionName && fu.UserId == user.Id);
+
+                if (existingFunctionUser != null)
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
+                    _context.FunctionUsers.Remove(existingFunctionUser);
+                    await _context.SaveChangesAsync(); // Сохраняем изменения в базе
                 }
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Function '{functionName}' deleted successfully for role {role}.",
+                    role = role
+                });
             }
-
-            return StatusCode(403, new
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new
             {
-                success = false,
-                message = "Delete failed for all roles.",
-                rolesTried = roles
+                role,
+                error = pgEx.MessageText,
+                detail = pgEx.Detail,
+                hint = pgEx.Hint,
+                code = pgEx.SqlState
             });
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error deleting function.",
-                error = ex.Message
-            });
+            // Логируем ошибку и продолжаем для других ролей
+            errors.Add(new { role, error = ex.Message });
+            continue;
         }
     }
 
-    private string ExtractFunctionNameFromSql(string sql)
+    // Если для всех ролей не удалось удалить функцию
+    return StatusCode(403, new
     {
-        var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+FUNCTION\s+(public\.)?([a-zA-Z0-9_]+)", RegexOptions.IgnoreCase);
-        return match.Success ? match.Groups[2].Value : null; // Use Groups[2] to get the function name without "public."
+        success = false,
+        message = "Delete failed for all roles.",
+        errors
+    });
+}
+
+
+private string ExtractFunctionNameFromSql(string sql)
+{
+    // Используем регулярное выражение, чтобы извлечь схему и имя функции
+    var match = Regex.Match(sql, @"CREATE\s+OR\s+REPLACE\s+FUNCTION\s+([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)|([a-zA-Z0-9_]+)\s*\(", RegexOptions.IgnoreCase);
+
+    // Если есть совпадение, то:
+    if (match.Success)
+    {
+        // Если схема указана, то возвращаем полное имя в формате "schema.function"
+        if (match.Groups[1].Success)
+        {
+            return $"{match.Groups[1].Value}.{match.Groups[2].Value}";
+        }
+        // Если схемы нет, то возвращаем только имя функции
+        return match.Groups[3].Value;
+    }
+    
+    return null; // Если совпадение не найдено
+}
+
+
+
+ [HttpPost("CreateFunctionFromSql")]
+public async Task<IActionResult> CreateFunctionFromSql([FromBody] string sql)
+{
+    if (string.IsNullOrEmpty(sql))
+    {
+        return BadRequest("SQL code is required.");
     }
 
-
-
-    [HttpPost("CreateFunctionFromSql")]
-    public async Task<IActionResult> CreateFunctionFromSql([FromBody] string sql)
+    var roles = GetRolesFromJwtToken();
+    if (roles == null || roles.Count == 0)
     {
-        if (string.IsNullOrEmpty(sql))
-        {
-            return BadRequest("SQL code is required.");
-        }
+        return StatusCode(403, new { message = "No roles available to set." });
+    }
 
-        var roles = GetRolesFromJwtToken();
-        if (roles == null || roles.Count == 0)
-        {
-            return StatusCode(403, new { message = "No roles available to set." });
-        }
+    // Открываем соединение один раз для всех ролей
+    using var connection = _context.Database.GetDbConnection();
+    await connection.OpenAsync();
 
-        using var connection = _context.Database.GetDbConnection();
+    string username = User.Identity.Name;
+    if (string.IsNullOrEmpty(username))
+    {
+        return Unauthorized("User is not authorized.");
+    }
+
+    // Перебираем роли
+    foreach (var role in roles)
+    {
         try
         {
-
-            await connection.OpenAsync();
-
-
-            foreach (var role in roles)
+            // Устанавливаем роль для текущего пользователя
+            using (var roleCommand = connection.CreateCommand())
             {
-                try
+                roleCommand.CommandText = $"SET ROLE \"{role}\";";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                var functionName = ExtractFunctionNameFromSql(sql);
+                if (string.IsNullOrEmpty(functionName))
                 {
-                    // Set the role for the current user
-                    using var roleCommand = connection.CreateCommand();
-                    roleCommand.CommandText = $"SET ROLE \"{role}\";";
-                    await roleCommand.ExecuteNonQueryAsync();
+                    return BadRequest("Unable to extract function name from the SQL code.");
+                }
 
-                    var functionName = ExtractFunctionNameFromSql(sql);
-                    if (string.IsNullOrEmpty(functionName))
-                    {
-                        return BadRequest("Unable to extract function name from the SQL code.");
-                    }
-
-                    // Execute the function creation SQL
-                    using var command = connection.CreateCommand();
+                // Выполняем SQL для создания функции
+                using (var command = connection.CreateCommand())
+                {
                     command.CommandText = sql;
                     await command.ExecuteNonQueryAsync();
+                }
 
-                    string username = User.Identity.Name;
-                    using var alterCommand = connection.CreateCommand();
+                // Устанавливаем владельца функции
+                using (var alterCommand = connection.CreateCommand())
+                {
                     alterCommand.CommandText = $"ALTER FUNCTION {functionName} OWNER TO \"{username}\";";
                     await alterCommand.ExecuteNonQueryAsync();
-                    roleCommand.CommandText = "RESET ROLE";
-                    await roleCommand.ExecuteNonQueryAsync();
-
-                    if (string.IsNullOrEmpty(username))
-                    {
-                        return Unauthorized("User is not authorized.");
-                    }
-                    var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
-                    if (user == null)
-                    {
-                        return NotFound("User not found.");
-                    }
-                    var functionUser = new FunctionUser
-                    {
-                        FunctionName = functionName,
-                        UserId = user.Id
-                    };
-
-                    _context.FunctionUsers.Add(functionUser);
-                    await _context.SaveChangesAsync();
-
-                    return Ok(new
-                    {
-                        success = true,
-                        message = $"Function created successfully and ownership set to {username} for role {role}.",
-                        role = role
-                    });
                 }
-                catch (PostgresException pgEx)
+
+                // Сбрасываем роль
+                roleCommand.CommandText = "RESET ROLE";
+                await roleCommand.ExecuteNonQueryAsync();
+
+                // Создаём запись в таблице FunctionUser
+                var user = await _context.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Username == username);
+                if (user == null)
                 {
-                    return BadRequest(new
-                    {
-                        success = false,
-                        message = "Error creating function.",
-                        postgresError = pgEx.MessageText,
-                        postgresDetails = pgEx.Detail,
-                        postgresHint = pgEx.Hint,
-                        postgresCode = pgEx.SqlState
-                    });
+                    return NotFound("User not found.");
                 }
-                catch (Exception ex)
+
+                var functionUser = new FunctionUser
                 {
-                    Console.WriteLine($"Execution failed for role {role}: {ex.Message}");
-                }
+                    FunctionName = functionName,
+                    UserId = user.Id
+                };
+
+                _context.FunctionUsers.Add(functionUser);
+                await _context.SaveChangesAsync();
+
+                // Возвращаем успех для текущей роли
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Function created successfully and ownership set to {username} for role {role}.",
+                    role = role
+                });
             }
-
-            return StatusCode(403, new
-            {
-                success = false,
-                message = "Function creation failed for all roles.",
-                rolesTried = roles
-            });
+        }
+        catch (PostgresException pgEx)
+        {
+            // Логируем и продолжаем для других ролей
+            Console.WriteLine($"Error creating function for role {role}: {pgEx.MessageText}");
+            continue;
         }
         catch (Exception ex)
         {
-            return StatusCode(500, new
-            {
-                success = false,
-                message = "Error executing function creation SQL.",
-                error = ex.Message
-            });
+            // Логируем и продолжаем для других ролей
+            Console.WriteLine($"Error creating function for role {role}: {ex.Message}");
+            continue;
         }
     }
+
+    return StatusCode(403, new
+    {
+        success = false,
+        message = "Function creation failed for all roles.",
+        rolesTried = roles
+    });
+}
 
     [HttpGet("GetAllFunctions")]
     public async Task<IActionResult> GetAllFunctions()
