@@ -1,4 +1,9 @@
-﻿using Microsoft.AspNetCore.Authorization;
+public class TokenDto
+{
+    public string Token { get; set; }
+}
+
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -21,7 +26,46 @@ namespace SuperHeroAPI.Controllers
         {
             _context = context;
         }
+    [HttpPost("getRolesFromToken")]
+    public async Task<ActionResult> GetRolesFromToken([FromBody] TokenDto dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.Token))
+            return BadRequest(new { error = "Token is required" });
 
+        ClaimsPrincipal principal;
+        try
+        {
+            var tokenHandler = new JwtSecurityTokenHandler();
+            principal = tokenHandler.ValidateToken(dto.Token, new TokenValidationParameters
+            {
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey         = new SymmetricSecurityKey(Convert.FromBase64String("B3N4rqHgVy9FREwfnK25in0GSfk8NyNz7Vz17gc5vL4=")),
+                ValidateIssuer           = false,
+                ValidateAudience         = false,
+                ClockSkew                = TimeSpan.Zero
+            }, out SecurityToken validatedToken);
+        }
+        catch (SecurityTokenException)
+        {
+            return Unauthorized(new { error = "Invalid token" });
+        }
+
+        // Извлекаем имя пользователя из ClaimTypes.Name
+        var username = principal.Identity?.Name;
+        if (string.IsNullOrEmpty(username))
+            return Unauthorized(new { error = "Token does not contain a valid Name claim" });
+
+        // Достаём из БД актуальные роли пользователя
+        var roles = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Username == username)
+            .SelectMany(u => u.UserRoles)
+            .Include(ur => ur.Role)
+            .Select(ur => ur.Role.RoleName)
+            .ToListAsync();
+
+        return Ok(new { Roles = roles });
+    }
         [HttpPost("register")]
         public ActionResult<User> Register(UserDto request)
         {
