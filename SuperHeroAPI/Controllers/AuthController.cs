@@ -1,8 +1,3 @@
-public class TokenDto
-{
-    public string Token { get; set; }
-}
-
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -265,7 +260,10 @@ namespace SuperHeroAPI.Controllers
             return new JwtSecurityTokenHandler().WriteToken(token);
         }
     }
-
+public class TokenDto
+{
+    public string Token { get; set; }
+}
     // DTO для обновления пользователя
     public class UpdateUserDto
     {
