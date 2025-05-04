@@ -40,16 +40,30 @@ CREATE TABLE IF NOT EXISTS ums.ums_roles
     CONSTRAINT ums_roles_pkey PRIMARY KEY (id)
 );
 
-CREATE TABLE IF NOT EXISTS ums.ums_globalpermissions
-(
-    permission_id      SERIAL PRIMARY KEY,
-    role_id            INTEGER,
-    schema_name        text    NOT NULL,
-    grant_create_db    BOOLEAN NOT NULL DEFAULT FALSE,  -- CREATE new schemas
-    grant_create_obj   BOOLEAN NOT NULL DEFAULT FALSE,  -- CREATE objects in schema
-    grant_update_tbl   BOOLEAN NOT NULL DEFAULT FALSE,
-    grant_delete_tbl   BOOLEAN NOT NULL DEFAULT FALSE,
-    CONSTRAINT uq_role_schema UNIQUE (role_id, schema_name)
+CREATE TABLE IF NOT EXISTS ums.ums_globalpermissions (
+    permission_id SERIAL PRIMARY KEY,
+    role_id INTEGER,
+    schema_name TEXT NOT NULL,
+    grant_create_db BOOLEAN NOT NULL DEFAULT FALSE,  -- CREATE new schemas
+    grant_create_obj BOOLEAN NOT NULL DEFAULT FALSE, -- CREATE objects in schema
+    grant_usage_schema BOOLEAN NOT NULL DEFAULT FALSE, -- USAGE on schema
+    grant_update_tbl BOOLEAN NOT NULL DEFAULT FALSE,
+    grant_delete_tbl BOOLEAN NOT NULL DEFAULT FALSE,
+    grant_select_tbl BOOLEAN NOT NULL DEFAULT FALSE, -- SELECT on tables
+    grant_insert_tbl BOOLEAN NOT NULL DEFAULT FALSE, -- INSERT on tables
+    grant_truncate_tbl BOOLEAN NOT NULL DEFAULT FALSE, -- TRUNCATE on tables
+    grant_references_tbl BOOLEAN NOT NULL DEFAULT FALSE, -- REFERENCES on tables
+    grant_trigger_tbl BOOLEAN NOT NULL DEFAULT FALSE, -- TRIGGER on tables
+    grant_usage_seq BOOLEAN NOT NULL DEFAULT FALSE, -- USAGE on sequences
+    grant_select_seq BOOLEAN NOT NULL DEFAULT FALSE, -- SELECT on sequences
+    grant_update_seq BOOLEAN NOT NULL DEFAULT FALSE, -- UPDATE on sequences
+    grant_execute_func BOOLEAN NOT NULL DEFAULT FALSE, -- EXECUTE on functions
+    CONSTRAINT uq_role_schema UNIQUE (role_id, schema_name),
+    CONSTRAINT fk_role_id FOREIGN KEY (role_id)
+        REFERENCES ums.ums_roles (id) MATCH SIMPLE
+        ON UPDATE NO ACTION
+        ON DELETE NO ACTION
+        NOT VALID
 );
 
 CREATE TABLE IF NOT EXISTS ums.ums_permissions
@@ -163,12 +177,7 @@ CREATE INDEX IF NOT EXISTS "IX_UserRole_UserId"
     ON ums.ums_user_role(user_id);
 
 
-ALTER TABLE IF EXISTS ums.ums_globalpermissions
-    ADD CONSTRAINT fk_role_id FOREIGN KEY (role_id)
-    REFERENCES ums.ums_roles (id) MATCH SIMPLE
-    ON UPDATE NO ACTION
-    ON DELETE NO ACTION
-    NOT VALID;
+
 
 
 ALTER TABLE IF EXISTS ums.ums_permissions
@@ -218,10 +227,10 @@ CREATE INDEX IF NOT EXISTS idx_request_logs_user_id
 
 
 CREATE OR REPLACE FUNCTION ums.add_permission_to_role()
-RETURNS trigger
-LANGUAGE 'plpgsql'
-COST 100
-VOLATILE NOT LEAKPROOF
+    RETURNS trigger
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
@@ -231,7 +240,7 @@ DECLARE
     full_table_ref TEXT;
 BEGIN
     -- �������� ��� ���� �� role_id
-    SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
+    SELECT j.role_name INTO role_name FROM ums.ums_roles j WHERE id = NEW.role_id;
 
     -- ���������, ���� �� ����� � ����� �������
     IF POSITION('.' IN NEW.table_name) > 0 THEN
@@ -320,10 +329,10 @@ ALTER FUNCTION ums.create_role_from_roles_table()
 
 
 CREATE OR REPLACE FUNCTION ums.delete_permission_from_role()
-RETURNS trigger
-LANGUAGE plpgsql
-COST 100
-VOLATILE NOT LEAKPROOF
+    RETURNS trigger
+    LANGUAGE 'plpgsql'
+    COST 100
+    VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
@@ -333,7 +342,7 @@ DECLARE
     full_table_ref TEXT;
 BEGIN
     -- �������� ��� ���� �� role_id
-    SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = OLD.role_id;
+    SELECT j.role_name INTO role_name FROM ums.ums_roles j WHERE id = OLD.role_id;
 
     -- ���������� ������: column-level ��� schema.table
     IF POSITION('.' IN OLD.table_name) > 0 THEN
@@ -717,104 +726,210 @@ $BODY$;
 ALTER PROCEDURE ums.delete_roles(integer)
     OWNER TO postgres;
 
-    CREATE OR REPLACE FUNCTION ums.select_globalpermissions(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+CREATE OR REPLACE FUNCTION ums.select_globalpermissions()
+RETURNS json
+LANGUAGE 'plpgsql'
+COST 100
+VOLATILE PARALLEL UNSAFE
 AS $BODY$
-    BEGIN
-        RETURN (SELECT json_agg(row_to_json(t)) FROM (SELECT * FROM ums.ums_globalpermissions) t);
-    END;
-    
+BEGIN
+    RETURN (
+        SELECT COALESCE(
+            json_agg(row_to_json(t)), 
+            '[]'::json  -- Если данных нет, возвращаем пустой JSON-массив
+        )
+        FROM (SELECT * FROM ums.ums_globalpermissions) t
+    );
+END;
 $BODY$;
 
 ALTER FUNCTION ums.select_globalpermissions()
     OWNER TO postgres;
 
-    CREATE OR REPLACE PROCEDURE ums.insert_globalpermissions(
-	IN roleid integer,
-	IN create_table_grant boolean,
-	IN update_table_grant boolean,
-	IN delete_table_grant boolean,
-	IN create_grant boolean)
-LANGUAGE 'plpgsql'
+CREATE OR REPLACE PROCEDURE ums.insert_globalpermissions(
+    IN roleid integer,
+    IN schema_name text,
+    IN grant_create_db boolean,
+    IN grant_create_obj boolean,
+    IN grant_usage_schema boolean,
+    IN grant_update_tbl boolean,
+    IN grant_delete_tbl boolean,
+    IN grant_select_tbl boolean,
+    IN grant_insert_tbl boolean,
+    IN grant_truncate_tbl boolean,
+    IN grant_references_tbl boolean,
+    IN grant_trigger_tbl boolean,
+    IN grant_usage_seq boolean,
+    IN grant_select_seq boolean,
+    IN grant_update_seq boolean,
+    IN grant_execute_func boolean
+)
+LANGUAGE plpgsql
 AS $BODY$
-    BEGIN
-        INSERT INTO ums.ums_globalpermissions (roleid, create_table_grant, update_table_grant, delete_table_grant, create_grant)
-        VALUES (roleid, create_table_grant, update_table_grant, delete_table_grant, create_grant);
-    END;
-    
+BEGIN
+    INSERT INTO ums.ums_globalpermissions (
+        role_id,
+        schema_name,
+        grant_create_db,
+        grant_create_obj,
+        grant_usage_schema,
+        grant_update_tbl,
+        grant_delete_tbl,
+        grant_select_tbl,
+        grant_insert_tbl,
+        grant_truncate_tbl,
+        grant_references_tbl,
+        grant_trigger_tbl,
+        grant_usage_seq,
+        grant_select_seq,
+        grant_update_seq,
+        grant_execute_func
+    )
+    VALUES (
+        roleid,
+        schema_name,
+        grant_create_db,
+        grant_create_obj,
+        grant_usage_schema,
+        grant_update_tbl,
+        grant_delete_tbl,
+        grant_select_tbl,
+        grant_insert_tbl,
+        grant_truncate_tbl,
+        grant_references_tbl,
+        grant_trigger_tbl,
+        grant_usage_seq,
+        grant_select_seq,
+        grant_update_seq,
+        grant_execute_func
+    );
+END;
 $BODY$;
-ALTER PROCEDURE ums.insert_globalpermissions(integer, boolean, boolean, boolean, boolean)
-    OWNER TO postgres;
 
-    CREATE OR REPLACE PROCEDURE ums.update_globalpermissions(
+
+CREATE OR REPLACE PROCEDURE ums.update_globalpermissions(
 	IN p_permissionid integer,
 	IN p_roleid integer,
-	IN p_create_table_grant boolean,
-	IN p_update_table_grant boolean,
-	IN p_delete_table_grant boolean,
-	IN p_create_grant boolean)
+	IN p_schema_name text,
+	IN p_grant_create_db boolean,
+	IN p_grant_create_obj boolean,
+	IN p_grant_usage_schema boolean,
+	IN p_grant_update_tbl boolean,
+	IN p_grant_delete_tbl boolean,
+	IN p_grant_select_tbl boolean,
+	IN p_grant_insert_tbl boolean,
+	IN p_grant_truncate_tbl boolean,
+	IN p_grant_references_tbl boolean,
+	IN p_grant_trigger_tbl boolean,
+	IN p_grant_usage_seq boolean,
+	IN p_grant_select_seq boolean,
+	IN p_grant_update_seq boolean,
+	IN p_grant_execute_func boolean)
 LANGUAGE 'plpgsql'
 AS $BODY$
 BEGIN
-    -- ���������, ���������� �� ������ � ����� permissionid
-    IF EXISTS (SELECT 1 FROM ums.ums_globalpermissions WHERE permissionid = p_permissionid) THEN
-        -- ���� ������ ����������, ��������� �
+    -- Проверка, существует ли запись с данным permission_id
+    IF EXISTS (SELECT 1 FROM ums.ums_globalpermissions WHERE permission_id = p_permissionid and schema_name=p_schema_name) THEN
+        -- Если существует, выполняем обновление
         UPDATE ums.ums_globalpermissions
-        SET roleid = p_roleid,
-            create_table_grant = p_create_table_grant,
-            update_table_grant = p_update_table_grant,
-            delete_table_grant = p_delete_table_grant,
-            create_grant = p_create_grant
-        WHERE permissionid = p_permissionid;
+        SET role_id = p_roleid,
+            schema_name = p_schema_name,
+            grant_create_db = p_grant_create_db,
+            grant_create_obj = p_grant_create_obj,
+            grant_usage_schema = p_grant_usage_schema,
+            grant_update_tbl = p_grant_update_tbl,
+            grant_delete_tbl = p_grant_delete_tbl,
+            grant_select_tbl = p_grant_select_tbl,
+            grant_insert_tbl = p_grant_insert_tbl,
+            grant_truncate_tbl = p_grant_truncate_tbl,
+            grant_references_tbl = p_grant_references_tbl,
+            grant_trigger_tbl = p_grant_trigger_tbl,
+            grant_usage_seq = p_grant_usage_seq,
+            grant_select_seq = p_grant_select_seq,
+            grant_update_seq = p_grant_update_seq,
+            grant_execute_func = p_grant_execute_func
+        WHERE permission_id = p_permissionid and
+	      schema_name = p_schema_name;
     ELSE
-        -- ���� ������ ���, ��������� �����, �� �� ��������� p_permissionid, ���� ��� SERIAL
-        INSERT INTO ums.ums_globalpermissions (roleid, create_table_grant, update_table_grant, delete_table_grant, create_grant)
-        VALUES (p_roleid, p_create_table_grant, p_update_table_grant, p_delete_table_grant, p_create_grant);
+        -- Если записи нет, вставляем новую
+        INSERT INTO ums.ums_globalpermissions (
+            role_id,
+            schema_name,
+            grant_create_db,
+            grant_create_obj,
+            grant_usage_schema,
+            grant_update_tbl,
+            grant_delete_tbl,
+            grant_select_tbl,
+            grant_insert_tbl,
+            grant_truncate_tbl,
+            grant_references_tbl,
+            grant_trigger_tbl,
+            grant_usage_seq,
+            grant_select_seq,
+            grant_update_seq,
+            grant_execute_func
+        ) VALUES (
+            p_roleid,
+            p_schema_name,
+            p_grant_create_db,
+            p_grant_create_obj,
+            p_grant_usage_schema,
+            p_grant_update_tbl,
+            p_grant_delete_tbl,
+            p_grant_select_tbl,
+            p_grant_insert_tbl,
+            p_grant_truncate_tbl,
+            p_grant_references_tbl,
+            p_grant_trigger_tbl,
+            p_grant_usage_seq,
+            p_grant_select_seq,
+            p_grant_update_seq,
+            p_grant_execute_func
+        );
     END IF;
 END;
-    
 $BODY$;
-ALTER PROCEDURE ums.update_globalpermissions(integer, integer, boolean, boolean, boolean, boolean)
-    OWNER TO postgres;
 
-    CREATE OR REPLACE PROCEDURE ums.delete_globalpermissions(
-	IN p_roleid integer)
+
+CREATE OR REPLACE PROCEDURE ums.delete_globalpermissions(
+	IN p_roleid integer,IN p_schema_name text)
 LANGUAGE 'plpgsql'
 AS $BODY$
     BEGIN
-        delete from ums.ums_globalpermissions WHERE roleid  = p_roleid;
+        delete from ums.ums_globalpermissions WHERE roleid  = p_roleid and schema_name=p_schema_name;
     END;
     
 $BODY$;
-ALTER PROCEDURE ums.delete_globalpermissions(integer)
-    OWNER TO postgres;
 
 
-    CREATE OR REPLACE FUNCTION ums.select_function_user(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+
+CREATE OR REPLACE FUNCTION ums.select_function_user()
+RETURNS json
+LANGUAGE plpgsql
+COST 100
+VOLATILE PARALLEL UNSAFE
 AS $BODY$
 BEGIN
     RETURN (
-        SELECT json_agg(
-            json_build_object(
-                'id', fu.id,
-                'functionname', fu.function_name,
-                'userid', fu.user_id,
-                'functiondefinition', pg_get_functiondef(p.oid)
-            )
+        SELECT COALESCE(
+            json_agg(
+                json_build_object(
+                    'id', fu.id,
+                    'functionname', fu.function_name,
+                    'userid', fu.user_id,
+                    'functiondefinition', pg_get_functiondef(p.oid)
+                )
+            ), '[]'::json
         )
         FROM ums.ums_function_user fu
-        JOIN pg_proc p ON p.proname = fu.function_name
+        JOIN pg_proc p ON p.proname = split_part(fu.function_name, '.', 2)  -- Разделение по схеме и имени функции
         JOIN pg_namespace n ON p.pronamespace = n.oid
-       
+        WHERE n.nspname = 
+            CASE 
+                WHEN strpos(fu.function_name, '.') > 0 THEN split_part(fu.function_name, '.', 1)  -- Если схема указана
+                ELSE 'public'  -- Если схема не указана, используем public
+            END
     );
 END;
 $BODY$;
@@ -840,40 +955,66 @@ ALTER PROCEDURE ums.update_function_user(integer, integer, character varying)
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE PROCEDURE ums.delete_function_user(
+CREATE OR REPLACE PROCEDURE ums.delete_function_user(
 	IN p_id integer,
-	IN p_functionname character varying)
-LANGUAGE 'plpgsql'
+	IN p_functionname character varying
+)
+LANGUAGE plpgsql
 AS $BODY$
-    BEGIN
-		DROP function if exists p_functionname;
-        DELETE from ums.ums_function_user where id=p_id;
-    END;
-    
+DECLARE
+    v_schema text := 'public';
+    v_funcname text;
+    v_full_name text;
+BEGIN
+    -- Если имя функции содержит схему, извлекаем схему и имя функции
+    IF position('.' in p_functionname) > 0 THEN
+        v_schema := split_part(p_functionname, '.', 1);
+        v_funcname := split_part(p_functionname, '.', 2);
+    ELSE
+        v_funcname := p_functionname;
+    END IF;
+
+    -- Полное имя функции с экранированием
+    v_full_name := format('%I.%I', v_schema, v_funcname);
+
+    -- Удаляем функцию, если существует (предполагается, что сигнатура неизвестна)
+    -- Это удалит все функции с таким именем вне зависимости от сигнатуры
+    -- Лучше явно указать сигнатуру, если известно, чтобы избежать побочных эффектов
+    EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', v_full_name);
+
+    -- Удаляем запись из таблицы
+    DELETE FROM ums.ums_function_user WHERE id = p_id;
+END;
 $BODY$;
 ALTER PROCEDURE ums.delete_function_user(integer, character varying)
     OWNER TO postgres;
 
-    CREATE OR REPLACE FUNCTION ums.select_procedure_user(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+CREATE OR REPLACE FUNCTION ums.select_procedure_user()
+RETURNS json
+LANGUAGE plpgsql
+COST 100
+VOLATILE PARALLEL UNSAFE
 AS $BODY$
 BEGIN
     RETURN (
-        SELECT json_agg(
-            json_build_object(
-                'id', fu.id,
-                'procedure_name', fu.procedure_name,
-                'user_id', fu.user_id,
-                'procedure_definition', pg_get_functiondef(p.oid)
-            )
+        SELECT COALESCE(
+            json_agg(
+                json_build_object(
+                    'id', fu.id,
+                    'procedure_name', fu.procedure_name,
+                    'user_id', fu.user_id,
+                    'procedure_definition', pg_get_functiondef(p.oid)
+                )
+            ), '[]'::json
         )
         FROM ums.ums_procedure_user fu
-        JOIN pg_proc p ON p.proname = fu.procedure_name
+        JOIN pg_proc p ON p.proname = split_part(fu.procedure_name, '.', 2)  -- Разделение по схеме и имени процедуры
         JOIN pg_namespace n ON p.pronamespace = n.oid
+        WHERE n.nspname = 
+            CASE 
+                WHEN strpos(fu.procedure_name, '.') > 0 THEN split_part(fu.procedure_name, '.', 1)  -- Если схема указана
+                ELSE 'public'  -- Если схема не указана, используем public
+            END
     );
 END;
 $BODY$;
@@ -899,9 +1040,8 @@ ALTER PROCEDURE ums.update_procedure_user(integer, integer, character varying)
     OWNER TO postgres;
 
 CREATE OR REPLACE PROCEDURE ums.delete_procedure_user(
-    IN p_id integer,
-    IN p_procedurename character varying
-)
+	IN p_id integer,
+	IN p_procedure_name character varying)
 LANGUAGE 'plpgsql'
 AS $BODY$
 DECLARE
@@ -910,11 +1050,11 @@ DECLARE
     v_full_name text;
 BEGIN
     -- ��������� ���, ���� ������� �����
-    IF position('.' in p_procedurename) > 0 THEN
-        v_schema := split_part(p_procedurename, '.', 1);
-        v_procname := split_part(p_procedurename, '.', 2);
+    IF position('.' in p_procedure_name) > 0 THEN
+        v_schema := split_part(p_procedure_name, '.', 1);
+        v_procname := split_part(p_procedure_name, '.', 2);
     ELSE
-        v_procname := p_procedurename;
+        v_procname := p_procedure_name;
     END IF;
 
     -- ���������� ������ ��� ��������� ��� ��������
@@ -924,9 +1064,10 @@ BEGIN
     EXECUTE format('DROP PROCEDURE IF EXISTS %s', v_full_name);
 
     -- ������� ������ �� �������
-    DELETE FROM procedure_user WHERE id = p_id;
+    DELETE FROM ums.ums_procedure_user WHERE id = p_id;
 END;
 $BODY$;
+
 
 ALTER PROCEDURE ums.delete_procedure_user(integer, character varying)
     OWNER TO postgres;
@@ -950,7 +1091,7 @@ DECLARE
   row_idx        record;
   row_comment    record;
 BEGIN
-  -- �������� OID, ����� � ��� �������
+  -- �������� OID, ����� � ��� �������
   SELECT (table_name::regclass)::oid,
          n.nspname,
          c.relname
@@ -959,7 +1100,7 @@ BEGIN
     JOIN pg_namespace n ON n.oid = c.relnamespace
    WHERE c.oid = table_name::regclass;
 
-  -- 1) ������ CREATE TABLE
+  -- 1) ������ CREATE TABLE
   table_def := format(
     'CREATE TABLE %I.%I (%s',
     schema_name, tbl_name, E'\n'
@@ -998,15 +1139,15 @@ BEGIN
       c.contype,
       c.condeferrable,
       c.condeferred,
-      -- ��� CHECK
+      -- ��� CHECK
       pg_get_expr(c.conbin, c.conrelid) AS check_expr,
-      -- ��� FK
+      -- ��� FK
       n2.nspname    AS ref_schema,
       c2.relname    AS ref_table,
       c.confmatchtype,
       c.confupdtype,
       c.confdeltype,
-      -- ������ ������
+      -- ������ ������
       ARRAY(
         SELECT quote_ident(a2.attname)
         FROM unnest(c.conkey) AS ck(attnum)
@@ -1048,7 +1189,7 @@ BEGIN
         || 'CHECK (' || row_con.check_expr || ')';
 
     ELSIF row_con.contype = 'x' THEN
-      -- EXCLUDE ����� ������� ����� pg_get_constraintdef
+      -- EXCLUDE ����� ������� ����� pg_get_constraintdef
       constraint_def := constraint_def
         || substring(
              pg_get_constraintdef(row_con.oid)
@@ -1091,7 +1232,7 @@ BEGIN
 
     -- DEFERRABLE / INITIALLY ...
     constraint_def := constraint_def
-      || CASE WHEN row_con.contype <> 'x'  -- EXCLUDE ��� ������
+      || CASE WHEN row_con.contype <> 'x'  -- EXCLUDE ��� ������
               THEN
                 ' '
                 || CASE WHEN row_con.condeferrable THEN 'DEFERRABLE' ELSE 'NOT DEFERRABLE' END
@@ -1104,7 +1245,7 @@ BEGIN
     table_def := table_def || constraint_def || E'\n';
   END LOOP;
 
-  -- ������� ��������� ������� � ��������� CREATE TABLE
+  -- ������� ��������� ������� � ��������� CREATE TABLE
   table_def := regexp_replace(
     table_def,
     ',\s*\n$',
@@ -1112,7 +1253,7 @@ BEGIN
     'm'
   ) || ');' || E'\n\n';
 
-  -- 2) ����������� �� �������
+  -- 2) ����������� �� �������
   SELECT obj_description(reg_oid, 'pg_class') INTO comment_text;
   IF comment_text IS NOT NULL THEN
     table_def := table_def
@@ -1120,7 +1261,7 @@ BEGIN
       || E'\n';
   END IF;
 
-  -- 2.1) ����������� �� �������
+  -- 2.1) ����������� �� �������
   FOR row_comment IN
     SELECT a.attname, col_description(a.attrelid, a.attnum) AS comment
       FROM pg_attribute a
@@ -1138,7 +1279,7 @@ BEGIN
   END LOOP;
   table_def := table_def || E'\n';
 
-  -- 3) �������
+  -- 3) �������
   FOR row_idx IN
     SELECT indexdef
       FROM pg_indexes
@@ -1215,40 +1356,42 @@ ALTER PROCEDURE ums.update_table_user(integer, integer, character varying)
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE PROCEDURE ums.delete_table_user(
-	IN p_oid integer)
+CREATE OR REPLACE PROCEDURE ums.delete_table_user(
+	IN p_id integer)
 LANGUAGE 'plpgsql'
 AS $BODY$
     BEGIN
-        UPDATE ums.ums_table_user SET deleted_at = now() WHERE oid = p_oid;
+        delete from ums.ums_table_user WHERE id = p_id;
     END;
     
 $BODY$;
 ALTER PROCEDURE ums.delete_table_user(integer)
     OWNER TO postgres;
 
-    CREATE OR REPLACE FUNCTION ums.select_trigger_user(
-	)
-    RETURNS json
-    LANGUAGE 'plpgsql'
-    COST 100
-    VOLATILE PARALLEL UNSAFE
+CREATE OR REPLACE FUNCTION ums.select_trigger_user()
+RETURNS json
+LANGUAGE plpgsql
+COST 100
+VOLATILE PARALLEL UNSAFE
 AS $BODY$
 BEGIN
     RETURN (
-        SELECT json_agg(
-            json_build_object(
-                'id', tu.id,
-                'trigger_name', tu.trigger_name,
-                'user_id', tu.user_id,
-                'trigger_definition', (
-                    SELECT pg_get_triggerdef(t.oid)
-                    FROM pg_trigger t
-                    JOIN pg_class c ON t.tgrelid = c.oid
-                    JOIN pg_namespace n ON c.relnamespace = n.oid
-                    WHERE t.tgname = tu.trigger_name
+        SELECT COALESCE(
+            json_agg(
+                json_build_object(
+                    'id', tu.id,
+                    'trigger_name', tu.trigger_name,
+                    'user_id', tu.user_id,
+                    'trigger_definition', (
+                        SELECT pg_get_triggerdef(t.oid)
+                        FROM pg_trigger t
+                        JOIN pg_class c ON t.tgrelid = c.oid
+                        JOIN pg_namespace n ON c.relnamespace = n.oid
+                        WHERE t.tgname = tu.trigger_name
+                        LIMIT 1
+                    )
                 )
-            )
+            ), '[]'::json
         )
         FROM ums.ums_trigger_user tu
     );
@@ -1258,6 +1401,55 @@ $BODY$;
 ALTER FUNCTION ums.select_trigger_user()
     OWNER TO postgres;
 
+CREATE OR REPLACE PROCEDURE ums.delete_trigger_user(
+	IN p_id integer,
+	IN p_trigger_name character varying
+)
+LANGUAGE plpgsql
+AS $BODY$
+DECLARE
+    v_schema text := 'public';
+    v_trigger_name text;
+    v_table_name text;
+    v_full_trigger_name text;
+BEGIN
+    -- Если имя триггера содержит схему (например: schema.trigger), извлекаем схему и имя триггера
+    IF position('.' in p_trigger_name) > 0 THEN
+        v_schema := split_part(p_trigger_name, '.', 1);
+        v_trigger_name := split_part(p_trigger_name, '.', 2);
+    ELSE
+        v_trigger_name := p_trigger_name;
+    END IF;
+
+    -- Получаем имя таблицы, к которой привязан триггер
+    SELECT event_object_table INTO v_table_name
+    FROM information_schema.triggers
+    WHERE trigger_schema = v_schema AND trigger_name = v_trigger_name
+    LIMIT 1;
+
+    -- Если таблица найдена, удаляем триггер
+    IF v_table_name IS NOT NULL THEN
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I CASCADE', v_trigger_name, v_schema, v_table_name);
+    END IF;
+
+    -- Удаляем запись из таблицы
+    DELETE FROM ums.ums_trigger_user WHERE id = p_id;
+END;
+$BODY$;
+
+CREATE OR REPLACE FUNCTION ums.insert_role(rolename text)
+RETURNS json AS
+$$
+DECLARE
+    new_id integer;
+BEGIN
+    INSERT INTO ums.ums_roles (role_name)
+    VALUES (rolename)
+    RETURNING id INTO new_id;
+
+    RETURN json_build_object('id', new_id);
+END;
+$$ LANGUAGE plpgsql;
 
     CREATE OR REPLACE FUNCTION ums.select_users(
 	)
@@ -1276,12 +1468,12 @@ ALTER FUNCTION ums.select_users()
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE PROCEDURE ums.delete_users(
-	IN p_oid integer)
+CREATE OR REPLACE PROCEDURE ums.delete_users(
+	IN p_id integer)
 LANGUAGE 'plpgsql'
 AS $BODY$
     BEGIN
-        UPDATE ums.ums_users SET deleted_at = now() WHERE oid = p_oid;
+        delete from ums.ums_users WHERE id = p_id;
     END;
     
 $BODY$;
@@ -1320,14 +1512,14 @@ ALTER FUNCTION ums.select_userrole()
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE PROCEDURE ums.insert_user_role(
-	IN user_id integer,
-	IN role_id integer)
+CREATE OR REPLACE PROCEDURE ums.insert_user_role(
+	IN userid integer,
+	IN roleid integer)
 LANGUAGE 'plpgsql'
 AS $BODY$
 BEGIN
     INSERT INTO ums.ums_user_role (user_id, role_id)
-    VALUES (user_id, role_id);
+    VALUES (userid, roleid);
 END;
 $BODY$;
 ALTER PROCEDURE ums.insert_user_role(integer, integer)
@@ -1385,12 +1577,12 @@ ALTER PROCEDURE ums.insert_permissions(integer, integer, text)
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE PROCEDURE ums.delete_permissions(
-	IN p_permissionid integer)
+CREATE OR REPLACE PROCEDURE ums.delete_permissions(
+	IN p_roleid integer)
 LANGUAGE 'plpgsql'
 AS $BODY$
     BEGIN
-       DELETE FROM ums.ums_permissions WHERE id = p_permissionid;
+       DELETE FROM ums.ums_permissions WHERE role_id = p_roleid;
     END;
     
 $BODY$;
@@ -1398,95 +1590,159 @@ ALTER PROCEDURE ums.delete_permissions(integer)
     OWNER TO postgres;
 
 
-    CREATE OR REPLACE FUNCTION ums.fn_apply_global_permission()
-  RETURNS trigger
-  LANGUAGE plpgsql
+CREATE OR REPLACE FUNCTION ums.fn_apply_global_permission()
+RETURNS trigger
+LANGUAGE plpgsql
 AS $$
 DECLARE
-  _role_name TEXT;
+    _role_name TEXT;
 BEGIN
-  -- fetch role name
-  SELECT role_name INTO _role_name
+    -- fetch role name
+    SELECT role_name INTO _role_name
     FROM ums.ums_roles
-   WHERE id = COALESCE(NEW.role_id, OLD.role_id);
+    WHERE id = COALESCE(NEW.role_id, OLD.role_id);
 
-  -- helper to issue GRANT/REVOKE
-  IF TG_OP = 'INSERT' THEN
-    -- USAGE is almost always desired
-    EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I',
-                   NEW.schema_name, _role_name);
+    -- helper to issue GRANT/REVOKE
+    IF TG_OP = 'INSERT' THEN
+        -- USAGE on schema
+        IF NEW.grant_usage_schema THEN
+            EXECUTE format('GRANT USAGE ON SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
 
-    IF NEW.grant_create_db THEN
-      EXECUTE format('GRANT CREATE ON DATABASE %I TO %I',
-                     current_database(), _role_name);
-    END IF;
-    IF NEW.grant_create_obj THEN
-      EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I',
-                     NEW.schema_name, _role_name);
-    END IF;
-    IF NEW.grant_update_tbl THEN
-      EXECUTE format('GRANT UPDATE ON ALL TABLES IN SCHEMA %I TO %I',
-                     NEW.schema_name, _role_name);
-    END IF;
-    IF NEW.grant_delete_tbl THEN
-      EXECUTE format('GRANT DELETE ON ALL TABLES IN SCHEMA %I TO %I',
-                     NEW.schema_name, _role_name);
+        -- CREATE on schema
+        IF NEW.grant_create_obj THEN
+            EXECUTE format('GRANT CREATE ON SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+
+        -- CREATE on database
+        IF NEW.grant_create_db THEN
+            EXECUTE format('GRANT CREATE ON DATABASE %I TO %I',
+                           current_database(), _role_name);
+        END IF;
+
+        -- GRANT on tables
+        IF NEW.grant_select_tbl THEN
+            EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_insert_tbl THEN
+            EXECUTE format('GRANT INSERT ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_update_tbl THEN
+            EXECUTE format('GRANT UPDATE ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_delete_tbl THEN
+            EXECUTE format('GRANT DELETE ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_truncate_tbl THEN
+            EXECUTE format('GRANT TRUNCATE ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_references_tbl THEN
+            EXECUTE format('GRANT REFERENCES ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_trigger_tbl THEN
+            EXECUTE format('GRANT TRIGGER ON ALL TABLES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+
+        -- GRANT on sequences
+        IF NEW.grant_usage_seq THEN
+            EXECUTE format('GRANT USAGE ON ALL SEQUENCES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_select_seq THEN
+            EXECUTE format('GRANT SELECT ON ALL SEQUENCES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+        IF NEW.grant_update_seq THEN
+            EXECUTE format('GRANT UPDATE ON ALL SEQUENCES IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+
+        -- GRANT on functions
+        IF NEW.grant_execute_func THEN
+            EXECUTE format('GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA %I TO %I',
+                           NEW.schema_name, _role_name);
+        END IF;
+
+    ELSIF TG_OP = 'DELETE' THEN
+        -- REVOKE on tables
+        IF OLD.grant_select_tbl THEN
+            EXECUTE format('REVOKE SELECT ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_insert_tbl THEN
+            EXECUTE format('REVOKE INSERT ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_update_tbl THEN
+            EXECUTE format('REVOKE UPDATE ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_delete_tbl THEN
+            EXECUTE format('REVOKE DELETE ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_truncate_tbl THEN
+            EXECUTE format('REVOKE TRUNCATE ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_references_tbl THEN
+            EXECUTE format('REVOKE REFERENCES ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_trigger_tbl THEN
+            EXECUTE format('REVOKE TRIGGER ON ALL TABLES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+
+        -- REVOKE on sequences
+        IF OLD.grant_usage_seq THEN
+            EXECUTE format('REVOKE USAGE ON ALL SEQUENCES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_select_seq THEN
+            EXECUTE format('REVOKE SELECT ON ALL SEQUENCES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+        IF OLD.grant_update_seq THEN
+            EXECUTE format('REVOKE UPDATE ON ALL SEQUENCES IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+
+        -- REVOKE on functions
+        IF OLD.grant_execute_func THEN
+            EXECUTE format('REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+
+        -- REVOKE on schema
+        IF OLD.grant_usage_schema THEN
+            EXECUTE format('REVOKE USAGE ON SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+
+        -- REVOKE CREATE on schema
+        IF OLD.grant_create_obj THEN
+            EXECUTE format('REVOKE CREATE ON SCHEMA %I FROM %I',
+                           OLD.schema_name, _role_name);
+        END IF;
+
+        -- REVOKE CREATE on database
+        IF OLD.grant_create_db THEN
+            EXECUTE format('REVOKE CREATE ON DATABASE %I FROM %I',
+                           current_database(), _role_name);
+        END IF;
     END IF;
 
-  ELSIF TG_OP = 'DELETE' THEN
-    IF OLD.grant_delete_tbl THEN
-      EXECUTE format('REVOKE DELETE ON ALL TABLES IN SCHEMA %I FROM %I',
-                     OLD.schema_name, _role_name);
-    END IF;
-    IF OLD.grant_update_tbl THEN
-      EXECUTE format('REVOKE UPDATE ON ALL TABLES IN SCHEMA %I FROM %I',
-                     OLD.schema_name, _role_name);
-    END IF;
-    IF OLD.grant_create_obj THEN
-      EXECUTE format('REVOKE CREATE ON SCHEMA %I FROM %I',
-                     OLD.schema_name, _role_name);
-    END IF;
-    IF OLD.grant_create_db THEN
-      EXECUTE format('REVOKE CREATE ON DATABASE %I FROM %I',
-                     current_database(), _role_name);
-    END IF;
-    -- finally revoke usage
-    EXECUTE format('REVOKE USAGE ON SCHEMA %I FROM %I',
-                   OLD.schema_name, _role_name);
-
-  ELSIF TG_OP = 'UPDATE' THEN
-    -- handle each privilege if it flipped
-    IF OLD.grant_create_db IS DISTINCT FROM NEW.grant_create_db THEN
-      EXECUTE format('%s CREATE ON DATABASE %I %s %I',
-                     CASE WHEN NEW.grant_create_db THEN 'GRANT' ELSE 'REVOKE' END,
-                     current_database(),
-                     CASE WHEN NEW.grant_create_db THEN 'TO' ELSE 'FROM' END,
-                     _role_name);
-    END IF;
-    IF OLD.grant_create_obj IS DISTINCT FROM NEW.grant_create_obj THEN
-      EXECUTE format('%s CREATE ON SCHEMA %I %s %I',
-                     CASE WHEN NEW.grant_create_obj THEN 'GRANT' ELSE 'REVOKE' END,
-                     NEW.schema_name,
-                     CASE WHEN NEW.grant_create_obj THEN 'TO' ELSE 'FROM' END,
-                     _role_name);
-    END IF;
-    IF OLD.grant_update_tbl IS DISTINCT FROM NEW.grant_update_tbl THEN
-      EXECUTE format('%s UPDATE ON ALL TABLES IN SCHEMA %I %s %I',
-                     CASE WHEN NEW.grant_update_tbl THEN 'GRANT' ELSE 'REVOKE' END,
-                     NEW.schema_name,
-                     CASE WHEN NEW.grant_update_tbl THEN 'TO' ELSE 'FROM' END,
-                     _role_name);
-    END IF;
-    IF OLD.grant_delete_tbl IS DISTINCT FROM NEW.grant_delete_tbl THEN
-      EXECUTE format('%s DELETE ON ALL TABLES IN SCHEMA %I %s %I',
-                     CASE WHEN NEW.grant_delete_tbl THEN 'GRANT' ELSE 'REVOKE' END,
-                     NEW.schema_name,
-                     CASE WHEN NEW.grant_delete_tbl THEN 'TO' ELSE 'FROM' END,
-                     _role_name);
-    END IF;
-  END IF;
-
-  RETURN COALESCE(NEW, OLD);
+    RETURN COALESCE(NEW, OLD);
 END;
 $$;
 
@@ -1499,4 +1755,48 @@ CREATE TRIGGER trg_apply_global_permission
   ON ums.ums_globalpermissions
   FOR EACH ROW
   EXECUTE FUNCTION ums.fn_apply_global_permission();
+  
+
+  CREATE OR REPLACE FUNCTION ums.get_schemas_json()
+RETURNS json
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT json_agg(json_build_object(
+    'schemaname', schema_name,
+    'fromdb', true
+  ))
+  FROM information_schema.schemata;
+$$;
+
+CREATE OR REPLACE PROCEDURE ums.drop_schema(p_schemaname TEXT)
+LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    -- Проверяем, существует ли схема с таким названием
+    IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = p_schemaname) THEN
+        RAISE EXCEPTION 'Схема "%" не существует', p_schemaname;
+    END IF;
+
+    -- Удаляем схему
+    EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', p_schemaname);
+END;
+$$;
+
+
+CREATE OR REPLACE PROCEDURE ums.create_schema(p_schemaname TEXT)
+LANGUAGE plpgsql
+AS
+$$
+BEGIN
+    -- Проверяем, существует ли схема с таким названием
+    IF EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = p_schemaname) THEN
+        RAISE EXCEPTION 'Схема "%" уже существует', p_schemaname;
+    END IF;
+
+    -- Создаём схему
+    EXECUTE format('CREATE SCHEMA %I', p_schemaname);
+END;
+$$;
 END;
