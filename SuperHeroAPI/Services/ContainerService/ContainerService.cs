@@ -671,30 +671,31 @@ namespace SuperHeroAPI.Services.ContainerService
                     labelSelector: "app.kubernetes.io/name=ingress-nginx");
             
                 // Look for the ingress controller service
-                var ingressService = ingressServices.Items.FirstOrDefault(s => s.Metadata.Name.Contains("controller"));
+                var ingressService = ingressServices?.Items?.FirstOrDefault(s => s.Metadata.Name.Contains("controller"));
             
                 if (ingressService != null)
                 {
                     // Check for LoadBalancer IP or hostname
-                    if (ingressService.Status.LoadBalancer.Ingress.Count > 0)
+                    if (ingressService.Status?.LoadBalancer?.Ingress != null && 
+                        ingressService.Status.LoadBalancer.Ingress.Count > 0)
                     {
                         var ingress = ingressService.Status.LoadBalancer.Ingress.First();
-                        if (!string.IsNullOrEmpty(ingress.Ip))
+                        if (!string.IsNullOrEmpty(ingress?.Ip))
                             return ingress.Ip;
-                        if (!string.IsNullOrEmpty(ingress.Hostname))
+                        if (!string.IsNullOrEmpty(ingress?.Hostname))
                             return ingress.Hostname;
                     }
             
                     // Check for NodePort
-                    var httpPort = ingressService.Spec.Ports.FirstOrDefault(p => p.Name == "http");
+                    var httpPort = ingressService.Spec?.Ports?.FirstOrDefault(p => p.Name == "http");
                     if (httpPort != null && httpPort.NodePort.HasValue)
                     {
                         // Use node IP with node port
                         var nodes = await _kubernetesClient.ListNodeAsync();
-                        if (nodes.Items.Count > 0)
+                        if (nodes?.Items != null && nodes.Items.Count > 0)
                         {
                             var node = nodes.Items.First();
-                            var nodeAddress = node.Status.Addresses.FirstOrDefault(a => a.Type == "ExternalIP")?.Address;
+                            var nodeAddress = node.Status?.Addresses?.FirstOrDefault(a => a.Type == "ExternalIP")?.Address;
                 
                             if (!string.IsNullOrEmpty(nodeAddress))
                                 return $"{nodeAddress}:{httpPort.NodePort.Value}";
@@ -721,7 +722,7 @@ namespace SuperHeroAPI.Services.ContainerService
                     string minikubeIp = await process.StandardOutput.ReadToEndAsync();
                     await process.WaitForExitAsync();
                 
-                    if (!string.IsNullOrEmpty(minikubeIp.Trim()))
+                    if (!string.IsNullOrEmpty(minikubeIp?.Trim()))
                         return minikubeIp.Trim();
                 }
                 catch
@@ -729,7 +730,16 @@ namespace SuperHeroAPI.Services.ContainerService
                     // Minikube not available, continue with fallback
                 }
             
-                // Fallback to localhost
+                // If we're here, use the current host
+                // Get the server URL from the Kubernetes client config
+                var serverUrl = _kubernetesClient.BaseUri?.Host;
+                if (!string.IsNullOrEmpty(serverUrl) && serverUrl != "localhost" && serverUrl != "kubernetes.default.svc")
+                {
+                    return serverUrl;
+                }
+            
+                // Last fallback to localhost
+                _logger.LogInformation("Using default hostname 'localhost' for service URL");
                 return "localhost";
             }
             catch (Exception ex)
