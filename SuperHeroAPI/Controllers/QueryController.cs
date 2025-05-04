@@ -1865,22 +1865,30 @@ FROM
             
             _logger.LogInformation($"File saved successfully: {filePath}");
 
-            // Return the file path that will be accessible via the web server
-            var fileUrl = $"{Request.Scheme}://{Request.Host}/docx/{fileName}";
+            // Generate URLs for accessing the file
+            var downloadUrl = $"{Request.Scheme}://{Request.Host}/api/Query/downloadFile/{fileName}";
             
             // Write debug info to a separate file to verify operations
             try
             {
                 var debugFilePath = Path.Combine(folderPath, "upload_debug.txt");
                 System.IO.File.AppendAllText(debugFilePath, 
-                    $"Upload on {DateTime.Now}: {fileName} to {filePath}, URL: {fileUrl}\n");
+                    $"Upload on {DateTime.Now}: {fileName} to {filePath}, URL: {downloadUrl}\n");
             }
             catch (Exception ex)
             {
                 _logger.LogWarning($"Failed to write debug info: {ex.Message}");
             }
             
-            return Ok(new { filePath = fileUrl, message = "File uploaded successfully", location = filePath });
+            // Return file information including download URL
+            return Ok(new { 
+                message = "File uploaded successfully", 
+                fileName = fileName,
+                originalFileName = file.FileName,
+                fileSize = file.Length,
+                downloadUrl = downloadUrl,
+                location = filePath 
+            });
         }
         catch (Exception ex)
         {
@@ -1889,7 +1897,116 @@ FROM
         }
     }
 
-
+    [HttpGet("downloadFile/{fileName}")]
+    public IActionResult DownloadFile(string fileName)
+    {
+        try
+        {
+            // Define the path where files are stored
+            var basePath = "/var/www/ncatbird.ru/html";
+            var folderPath = Path.Combine(basePath, "docx");
+            
+            // Sanitize the filename to prevent directory traversal attacks
+            fileName = Path.GetFileName(fileName);
+            
+            // Build the full path to the file
+            var filePath = Path.Combine(folderPath, fileName);
+            
+            _logger.LogInformation($"Attempting to download file: {filePath}");
+            
+            // Check if the file exists
+            if (!System.IO.File.Exists(filePath))
+            {
+                _logger.LogWarning($"File not found: {filePath}");
+                return NotFound($"File {fileName} not found");
+            }
+            
+            // Determine content type based on file extension
+            var contentType = GetContentType(Path.GetExtension(fileName));
+            
+            // Log success
+            _logger.LogInformation($"Returning file: {filePath} with content type: {contentType}");
+            
+            // Return the file
+            var fileBytes = System.IO.File.ReadAllBytes(filePath);
+            return File(fileBytes, contentType, fileName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error downloading file {fileName}: {ex.Message}");
+            return StatusCode(500, $"Internal server error: {ex.Message}");
+        }
+    }
+    
+    [HttpGet("listFiles")]
+    public IActionResult ListFiles()
+    {
+        try
+        {
+            // Define the path where files are stored
+            var basePath = "/var/www/ncatbird.ru/html";
+            var folderPath = Path.Combine(basePath, "docx");
+            
+            _logger.LogInformation($"Listing files in directory: {folderPath}");
+            
+            // Check if the directory exists
+            if (!Directory.Exists(folderPath))
+            {
+                _logger.LogWarning($"Directory not found: {folderPath}");
+                return NotFound("Files directory not found");
+            }
+            
+            // Get all files in the directory
+            var files = Directory.GetFiles(folderPath)
+                .Select(f => new {
+                    FileName = Path.GetFileName(f),
+                    FullPath = f,
+                    Size = new FileInfo(f).Length,
+                    CreatedAt = new FileInfo(f).CreationTime,
+                    // Generate download URL
+                    DownloadUrl = $"{Request.Scheme}://{Request.Host}/api/Query/downloadFile/{Path.GetFileName(f)}"
+                })
+                .ToList();
+            
+            return Ok(new { Files = files, Count = files.Count });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error listing files: {ex.Message}");
+            return StatusCode(500, $"Internal server error: {ex.Message}");
+        }
+    }
+    
+    // Helper method to determine content type from file extension
+    private string GetContentType(string extension)
+    {
+        switch (extension.ToLower())
+        {
+            case ".pdf":
+                return "application/pdf";
+            case ".doc":
+                return "application/msword";
+            case ".docx":
+                return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case ".xls":
+                return "application/vnd.ms-excel";
+            case ".xlsx":
+                return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case ".png":
+                return "image/png";
+            case ".jpg":
+            case ".jpeg":
+                return "image/jpeg";
+            case ".gif":
+                return "image/gif";
+            case ".txt":
+                return "text/plain";
+            case ".csv":
+                return "text/csv";
+            default:
+                return "application/octet-stream";
+        }
+    }
 }
 
 
