@@ -27,7 +27,7 @@ using System.Diagnostics;
 
 
 [Route("api/[controller]")]
-[ApiController, Authorize]
+[ApiController]
 public class QueryController : ControllerBase
 {
     private readonly DataContext _context;
