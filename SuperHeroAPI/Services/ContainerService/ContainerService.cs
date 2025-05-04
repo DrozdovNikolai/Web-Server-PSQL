@@ -505,15 +505,10 @@ namespace SuperHeroAPI.Services.ContainerService
                         Annotations = new Dictionary<string, string>
                         {
                             ["kubernetes.io/ingress.class"] = "nginx",
-                            ["nginx.ingress.kubernetes.io/rewrite-target"] = "/$2",
+                            ["nginx.ingress.kubernetes.io/rewrite-target"] = "/docx/$2",
                             ["nginx.ingress.kubernetes.io/use-regex"] = "true",
                             ["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m",
-                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false",
-                            ["nginx.ingress.kubernetes.io/configuration-snippet"] = 
-                                "location ~ ^/(.*)/docx/(.*) {\n" +
-                                "  root /var/www/ncatbird.ru/html;\n" +
-                                "  try_files /docx/$2 =404;\n" +
-                                "}\n"
+                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
                         }
                     },
                     Spec = new V1IngressSpec
@@ -528,7 +523,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                     {
                                         new V1HTTPIngressPath
                                         {
-                                            Path = $"/{container.Name.ToLower()}/docx/(.+)",
+                                            Path = $"/{container.Name.ToLower()}/docx(/|$)(.*)",
                                             PathType = "ImplementationSpecific",
                                             Backend = new V1IngressBackend
                                             {
