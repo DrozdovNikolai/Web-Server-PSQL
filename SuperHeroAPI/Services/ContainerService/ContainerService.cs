@@ -257,8 +257,9 @@ namespace SuperHeroAPI.Services.ContainerService
                                         { 
                                             "mkdir -p /var/www/ncatbird.ru/html/docx && " +
                                             "chmod -R 777 /var/www/ncatbird.ru && " +
-                                            "echo 'Verifying directory mount...' && " +
-                                            "echo 'Init container setup complete at $(date)' > /var/www/ncatbird.ru/html/docx/init_verification.txt && " +
+                                            "touch /var/www/ncatbird.ru/html/docx/init_test.txt && " +
+                                            "echo 'Init container initialized at $(date)' > /var/www/ncatbird.ru/html/docx/init_test.txt && " +
+                                            "echo 'Directory contents:' && " +
                                             "ls -la /var/www/ncatbird.ru/html/docx"
                                         },
                                         VolumeMounts = new List<V1VolumeMount>
