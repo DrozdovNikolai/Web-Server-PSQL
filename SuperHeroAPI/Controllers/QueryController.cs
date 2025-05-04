@@ -23,6 +23,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using OfficeOpenXml;
 using OfficeOpenXml.Style; 
+using System.Diagnostics;
 
 
 [Route("api/[controller]")]
@@ -32,12 +33,14 @@ public class QueryController : ControllerBase
     private readonly DataContext _context;
     private readonly IRoleService _roleService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<QueryController> _logger;
 
-    public QueryController(DataContext context, IRoleService roleService, IHttpContextAccessor httpContextAccessor)
+    public QueryController(DataContext context, IRoleService roleService, IHttpContextAccessor httpContextAccessor, ILogger<QueryController> logger)
     {
         _context = context;
         _roleService = roleService;
         _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
     }
 
     [HttpGet("{tableName}")]
@@ -1751,41 +1754,92 @@ FROM
 
         try
         {
-            // Define the path where the file will be saved
-            var folderPath = Path.Combine("/var/www/ncatbird.ru/html", "docx");
+            // Define the base path and docx subdirectory
+            var basePath = "/var/www/ncatbird.ru/html";
+            var folderPath = Path.Combine(basePath, "docx");
+            
+            // Log the paths for debugging
+            _logger.LogInformation($"Base path: {basePath}");
+            _logger.LogInformation($"Target folder path: {folderPath}");
+            
+            // Check if base directory exists
+            if (!Directory.Exists(basePath))
+            {
+                _logger.LogWarning($"Base directory {basePath} does not exist. Attempting to create it.");
+                Directory.CreateDirectory(basePath);
+            }
+            
+            // Create docx directory if it doesn't exist
             if (!Directory.Exists(folderPath))
             {
-                // Create directory with full permissions if it doesn't exist
+                _logger.LogInformation($"Creating directory: {folderPath}");
                 Directory.CreateDirectory(folderPath);
                 
-                // Ensure proper permissions (on Linux systems)
+                // Set directory permissions (for Linux environments)
                 try
                 {
-                    // This requires the System.Diagnostics namespace
-                    System.Diagnostics.Process.Start("chmod", $"777 {folderPath}");
+                    var processInfo = new ProcessStartInfo
+                    {
+                        FileName = "chmod",
+                        Arguments = $"777 {folderPath}",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    var process = Process.Start(processInfo);
+                    if (process != null)
+                    {
+                        await process.WaitForExitAsync();
+                        var output = await process.StandardOutput.ReadToEndAsync();
+                        var error = await process.StandardError.ReadToEndAsync();
+                        
+                        if (!string.IsNullOrEmpty(error))
+                        {
+                            _logger.LogWarning($"Error setting permissions: {error}");
+                        }
+                        else if (!string.IsNullOrEmpty(output))
+                        {
+                            _logger.LogInformation($"Permission output: {output}");
+                        }
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Ignore chmod errors, as it may not be available on all platforms
+                    _logger.LogWarning($"Failed to set directory permissions: {ex.Message}");
+                    // Continue despite chmod errors
                 }
             }
 
             // Generate a unique file name to avoid conflicts
             var fileName = $"{Guid.NewGuid()}_{Path.GetFileName(file.FileName)}";
             var filePath = Path.Combine(folderPath, fileName);
+            
+            _logger.LogInformation($"Saving file to: {filePath}");
 
             // Save the file
             using (var stream = new FileStream(filePath, FileMode.Create))
             {
                 await file.CopyToAsync(stream);
             }
+            
+            // Verify file was created
+            if (!System.IO.File.Exists(filePath))
+            {
+                _logger.LogError($"File was not created at expected path: {filePath}");
+                return StatusCode(500, "Failed to save file. The file was not created at the expected location.");
+            }
+            
+            _logger.LogInformation($"File saved successfully: {filePath}");
 
             // Return the file path that will be accessible via the web server
             var fileUrl = $"{Request.Scheme}://{Request.Host}/docx/{fileName}";
-            return Ok(new { filePath = fileUrl });
+            return Ok(new { filePath = fileUrl, message = "File uploaded successfully" });
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, $"Error uploading file: {ex.Message}");
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }

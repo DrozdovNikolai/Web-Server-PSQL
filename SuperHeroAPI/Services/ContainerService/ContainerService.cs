@@ -245,6 +245,29 @@ namespace SuperHeroAPI.Services.ContainerService
                             },
                             Spec = new V1PodSpec
                             {
+                                // Add init container to setup directories and permissions
+                                InitContainers = new List<V1Container>
+                                {
+                                    new V1Container
+                                    {
+                                        Name = "init-file-permissions",
+                                        Image = "busybox",
+                                        Command = new List<string> { "/bin/sh", "-c" },
+                                        Args = new List<string> 
+                                        { 
+                                            "mkdir -p /var/www/ncatbird.ru/html/docx && " +
+                                            "chmod -R 777 /var/www/ncatbird.ru"
+                                        },
+                                        VolumeMounts = new List<V1VolumeMount>
+                                        {
+                                            new V1VolumeMount
+                                            {
+                                                Name = "file-upload-volume",
+                                                MountPath = "/var/www/ncatbird.ru/html"
+                                            }
+                                        }
+                                    }
+                                },
                                 Containers = new List<V1Container>
                                 {
                                     new V1Container
@@ -355,7 +378,8 @@ namespace SuperHeroAPI.Services.ContainerService
                                             new V1VolumeMount
                                             {
                                                 Name = "file-upload-volume",
-                                                MountPath = "/var/www/ncatbird.ru/html"
+                                                MountPath = "/var/www/ncatbird.ru/html",
+                                                ReadOnlyProperty = false
                                             }
                                         }
                                     }
@@ -371,6 +395,13 @@ namespace SuperHeroAPI.Services.ContainerService
                                             ClaimName = pvcName
                                         }
                                     }
+                                },
+                                // Add security context to allow writing to the mounted volume
+                                SecurityContext = new V1PodSecurityContext
+                                {
+                                    FsGroup = 1000,
+                                    RunAsUser = 1000,
+                                    RunAsGroup = 1000
                                 }
                             }
                         }
@@ -468,10 +499,15 @@ namespace SuperHeroAPI.Services.ContainerService
                         Annotations = new Dictionary<string, string>
                         {
                             ["kubernetes.io/ingress.class"] = "nginx",
-                            ["nginx.ingress.kubernetes.io/rewrite-target"] = "/docx/$2",
+                            ["nginx.ingress.kubernetes.io/rewrite-target"] = "/$2",
                             ["nginx.ingress.kubernetes.io/use-regex"] = "true",
                             ["nginx.ingress.kubernetes.io/proxy-body-size"] = "100m",
-                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false"
+                            ["nginx.ingress.kubernetes.io/ssl-redirect"] = "false",
+                            ["nginx.ingress.kubernetes.io/configuration-snippet"] = 
+                                "location ~ ^/(.*)/docx/(.*) {\n" +
+                                "  root /var/www/ncatbird.ru/html;\n" +
+                                "  try_files /docx/$2 =404;\n" +
+                                "}\n"
                         }
                     },
                     Spec = new V1IngressSpec
@@ -486,7 +522,7 @@ namespace SuperHeroAPI.Services.ContainerService
                                     {
                                         new V1HTTPIngressPath
                                         {
-                                            Path = $"/{container.Name.ToLower()}/docx(/|$)(.*)",
+                                            Path = $"/{container.Name.ToLower()}/docx/(.+)",
                                             PathType = "ImplementationSpecific",
                                             Backend = new V1IngressBackend
                                             {
