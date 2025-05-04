@@ -262,6 +262,11 @@ namespace SuperHeroAPI.Services.ContainerService
                                             "echo 'Directory contents:' && " +
                                             "ls -la /var/www/ncatbird.ru/html/docx"
                                         },
+                                        SecurityContext = new V1SecurityContext
+                                        {
+                                            Privileged = true,
+                                            RunAsUser = 0 // Run as root
+                                        },
                                         VolumeMounts = new List<V1VolumeMount>
                                         {
                                             new V1VolumeMount
