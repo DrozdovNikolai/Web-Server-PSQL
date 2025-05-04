@@ -1818,10 +1818,42 @@ FROM
             
             _logger.LogInformation($"Saving file to: {filePath}");
 
-            // Save the file
-            using (var stream = new FileStream(filePath, FileMode.Create))
+            // Create the file
+            try
             {
-                await file.CopyToAsync(stream);
+                using (var stream = new FileStream(filePath, FileMode.Create))
+                {
+                    await file.CopyToAsync(stream);
+                }
+                
+                // Ensure file permissions are set
+                try
+                {
+                    var processInfo = new ProcessStartInfo
+                    {
+                        FileName = "chmod",
+                        Arguments = $"777 {filePath}",
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    };
+                    
+                    var process = Process.Start(processInfo);
+                    if (process != null)
+                    {
+                        await process.WaitForExitAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Failed to set file permissions: {ex.Message}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error writing file: {ex.Message}");
+                return StatusCode(500, $"Failed to save file: {ex.Message}");
             }
             
             // Verify file was created
@@ -1835,7 +1867,20 @@ FROM
 
             // Return the file path that will be accessible via the web server
             var fileUrl = $"{Request.Scheme}://{Request.Host}/docx/{fileName}";
-            return Ok(new { filePath = fileUrl, message = "File uploaded successfully" });
+            
+            // Write debug info to a separate file to verify operations
+            try
+            {
+                var debugFilePath = Path.Combine(folderPath, "upload_debug.txt");
+                System.IO.File.AppendAllText(debugFilePath, 
+                    $"Upload on {DateTime.Now}: {fileName} to {filePath}, URL: {fileUrl}\n");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"Failed to write debug info: {ex.Message}");
+            }
+            
+            return Ok(new { filePath = fileUrl, message = "File uploaded successfully", location = filePath });
         }
         catch (Exception ex)
         {
