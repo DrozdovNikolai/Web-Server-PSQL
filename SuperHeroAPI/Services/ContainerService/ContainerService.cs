@@ -256,14 +256,18 @@ namespace SuperHeroAPI.Services.ContainerService
                                         Args = new List<string> 
                                         { 
                                             "mkdir -p /var/www/ncatbird.ru/html/docx && " +
-                                            "chmod -R 777 /var/www/ncatbird.ru"
+                                            "chmod -R 777 /var/www/ncatbird.ru && " +
+                                            "echo 'Verifying directory mount...' && " +
+                                            "echo 'Init container setup complete at $(date)' > /var/www/ncatbird.ru/html/docx/init_verification.txt && " +
+                                            "ls -la /var/www/ncatbird.ru/html/docx"
                                         },
                                         VolumeMounts = new List<V1VolumeMount>
                                         {
                                             new V1VolumeMount
                                             {
                                                 Name = "file-upload-volume",
-                                                MountPath = "/var/www/ncatbird.ru/html"
+                                                MountPath = "/var/www/ncatbird.ru/html",
+                                                ReadOnlyProperty = false
                                             }
                                         }
                                     }
@@ -390,9 +394,11 @@ namespace SuperHeroAPI.Services.ContainerService
                                     new V1Volume
                                     {
                                         Name = "file-upload-volume",
-                                        PersistentVolumeClaim = new V1PersistentVolumeClaimVolumeSource
+                                        // Use HostPath instead of PersistentVolumeClaim to store files directly on the host
+                                        HostPath = new V1HostPathVolumeSource
                                         {
-                                            ClaimName = pvcName
+                                            Path = "/var/www/ncatbird.ru/html",
+                                            Type = "DirectoryOrCreate"
                                         }
                                     }
                                 },
