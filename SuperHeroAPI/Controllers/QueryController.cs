@@ -1946,7 +1946,7 @@ FROM
         if (queryRequest == null || string.IsNullOrWhiteSpace(queryRequest.Query))
             return BadRequest("Query is missing or empty.");
 
-        var roles = GetRolesFromJwt();
+        var roles = GetRolesFromJwtToken();
         if (roles.Count == 0)
             return Forbid("No roles available to set.");
 
