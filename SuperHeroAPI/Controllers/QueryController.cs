@@ -43,6 +43,71 @@ public class QueryController : ControllerBase
         _logger = logger;
     }
 
+ [HttpPost]
+    public async Task<IActionResult> Post([FromBody] QueryRequest queryRequest)
+    {
+        if (queryRequest == null || string.IsNullOrWhiteSpace(queryRequest.Query))
+            return BadRequest("Query is missing or empty.");
+
+        var roles = GetRolesFromJwt();
+        if (roles.Count == 0)
+            return Forbid("No roles available to set.");
+
+        var errors = new List<string>();
+
+        using var connection = _context.Database.GetDbConnection();
+        await connection.OpenAsync();
+
+        foreach (var role in roles)
+        {
+            try
+            {
+                // Устанавливаем роль
+                using var roleCmd = connection.CreateCommand();
+                roleCmd.CommandText = $"SET ROLE \"{role}\";";
+                roleCmd.CommandType = CommandType.Text;
+                await roleCmd.ExecuteNonQueryAsync();
+
+                // Выполняем произвольный SQL-запрос
+                using var cmd = connection.CreateCommand();
+                cmd.CommandText = queryRequest.Query;
+                cmd.CommandType = CommandType.Text;
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                if (!reader.HasRows)
+                    return Ok("Пустой вывод.");
+
+                var result = new List<Dictionary<string, object>>();
+                while (await reader.ReadAsync())
+                {
+                    var row = new Dictionary<string, object>();
+                    for (int i = 0; i < reader.FieldCount; i++)
+                        row[reader.GetName(i)] = reader.GetValue(i);
+                    result.Add(row);
+                }
+
+                return result.Count == 1 ? Ok(result[0]) : Ok(result);
+            }
+            catch (PostgresException pgEx)
+            {
+                // Сохраняем ошибку конкретной роли и продолжаем
+                errors.Add($"Role: {role}, PG Error: {pgEx.MessageText}");
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Role: {role}, Error: {ex.Message}");
+            }
+        }
+
+        // Ни одна роль не выполнила запрос успешно
+        return Forbid(new
+        {
+            message = "Execution failed for all roles.",
+            rolesTried = roles,
+            errors
+        });
+    }
+
     [HttpGet("{tableName}")]
 
     public async Task<IActionResult> Get(string tableName)
