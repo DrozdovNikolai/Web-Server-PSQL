@@ -27,7 +27,7 @@ using System.Diagnostics;
 
 
 [Route("api/[controller]")]
-[ApiController]
+[ApiController, Authorize]
 public class QueryController : ControllerBase
 {
     private readonly DataContext _context;
@@ -1745,6 +1745,7 @@ FROM
 
 
     [HttpPost("uploadFile")]
+    [AllowAnonymous]
     public async Task<IActionResult> UploadFile(IFormFile file)
     {
         if (file == null || file.Length == 0)
@@ -1898,6 +1899,7 @@ FROM
     }
 
     [HttpGet("downloadFile/{fileName}")]
+    [AllowAnonymous]
     public IActionResult DownloadFile(string fileName)
     {
         try
@@ -1939,6 +1941,7 @@ FROM
     }
     
     [HttpGet("listFiles")]
+    [AllowAnonymous]
     public IActionResult ListFiles()
     {
         try
