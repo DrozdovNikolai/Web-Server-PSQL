@@ -1940,7 +1940,7 @@ FROM
             return StatusCode(500, $"Internal server error: {ex.Message}");
         }
     }
-     [HttpPost]
+    [HttpPost]
     public async Task<IActionResult> Post([FromBody] QueryRequest queryRequest)
     {
         if (queryRequest == null || string.IsNullOrWhiteSpace(queryRequest.Query))
@@ -1948,10 +1948,14 @@ FROM
 
         var roles = GetRolesFromJwtToken();
         if (roles.Count == 0)
-            return Forbid("No roles available to set.");
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new
+            {
+                message = "No roles available to set."
+            });
+        }
 
         var errors = new List<string>();
-
         using var connection = _context.Database.GetDbConnection();
         await connection.OpenAsync();
 
@@ -1960,10 +1964,12 @@ FROM
             try
             {
                 // Устанавливаем роль
-                using var roleCmd = connection.CreateCommand();
-                roleCmd.CommandText = $"SET ROLE \"{role}\";";
-                roleCmd.CommandType = CommandType.Text;
-                await roleCmd.ExecuteNonQueryAsync();
+                using (var roleCmd = connection.CreateCommand())
+                {
+                    roleCmd.CommandText = $"SET ROLE \"{role}\";";
+                    roleCmd.CommandType = CommandType.Text;
+                    await roleCmd.ExecuteNonQueryAsync();
+                }
 
                 // Выполняем произвольный SQL-запрос
                 using var cmd = connection.CreateCommand();
@@ -1987,7 +1993,6 @@ FROM
             }
             catch (PostgresException pgEx)
             {
-                // Сохраняем ошибку конкретной роли и продолжаем
                 errors.Add($"Role: {role}, PG Error: {pgEx.MessageText}");
             }
             catch (Exception ex)
@@ -1996,15 +2001,15 @@ FROM
             }
         }
 
-        // Ни одна роль не выполнила запрос успешно
-        return Forbid(new
+        // Если ни одна роль не выполнила запрос успешно
+        return StatusCode(StatusCodes.Status403Forbidden, new
         {
+            success = false,
             message = "Execution failed for all roles.",
             rolesTried = roles,
             errors
         });
     }
-
     [HttpGet("listFiles")]
     [AllowAnonymous]
     public IActionResult ListFiles()
