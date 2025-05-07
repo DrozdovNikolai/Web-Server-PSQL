@@ -3,29 +3,29 @@
     <Card>
       <template #title>
         <div class="flex justify-content-between align-items-center">
-          <h2>Kubernetes Containers</h2>
-          <Button label="Add New Container" icon="pi pi-plus" @click="navigateToNew" />
+          <h2>{{ $t('container.title') }}</h2>
+          <Button :label="$t('container.addNew')" icon="pi pi-plus" @click="navigateToNew" />
         </div>
       </template>
       <template #content>
         <DataTable :value="containers" :loading="loading" stripedRows 
                   responsiveLayout="scroll" class="p-datatable-sm">
-          <Column field="name" header="Name"></Column>
-          <Column field="status" header="Status">
+          <Column field="name" :header="$t('container.name')"></Column>
+          <Column field="status" :header="$t('container.status')">
             <template #body="slotProps">
               <span :class="getStatusClass(slotProps.data.status)">
-                {{ slotProps.data.status }}
+                {{ $t(`status.${slotProps.data.status.toLowerCase()}`) }}
               </span>
             </template>
           </Column>
-          <Column field="dbHost" header="DB Host"></Column>
-          <Column field="dbName" header="DB Name"></Column>
-          <Column field="createdAt" header="Created">
+          <Column field="dbHost" :header="$t('container.dbHost')"></Column>
+          <Column field="dbName" :header="$t('container.dbName')"></Column>
+          <Column field="createdAt" :header="$t('container.created')">
             <template #body="slotProps">
               {{ formatDate(slotProps.data.createdAt) }}
             </template>
           </Column>
-          <Column header="Actions">
+          <Column :header="$t('common.actions')">
             <template #body="slotProps">
               <Button icon="pi pi-trash" class="p-button-danger p-button-sm"
                       @click="confirmDelete(slotProps.data)" />
@@ -37,14 +37,14 @@
       </template>
     </Card>
 
-    <Dialog header="Confirm Deletion" v-model:visible="deleteDialog" :style="{width: '450px'}">
+    <Dialog :header="$t('container.confirmDelete')" v-model:visible="deleteDialog" :style="{width: '450px'}">
       <div class="confirmation-content">
         <i class="pi pi-exclamation-triangle p-mr-3" style="font-size: 2rem" />
-        <span>Are you sure you want to delete this container?</span>
+        <span>{{ $t('container.deleteConfirmMessage') }}</span>
       </div>
       <template #footer>
-        <Button label="No" icon="pi pi-times" class="p-button-text" @click="deleteDialog = false" />
-        <Button label="Yes" icon="pi pi-check" class="p-button-text" @click="deleteContainer" />
+        <Button :label="$t('common.no')" icon="pi pi-times" class="p-button-text" @click="deleteDialog = false" />
+        <Button :label="$t('common.yes')" icon="pi pi-check" class="p-button-text" @click="deleteContainer" />
       </template>
     </Dialog>
   </div>
@@ -55,6 +55,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useStore } from 'vuex'
 import { useRouter } from 'vue-router'
 import { useToast } from 'primevue/usetoast'
+import { useI18n } from 'vue-i18n'
 
 export default {
   name: 'ContainerList',
@@ -62,6 +63,7 @@ export default {
     const store = useStore()
     const router = useRouter()
     const toast = useToast()
+    const { t } = useI18n()
     const deleteDialog = ref(false)
     const selectedContainer = ref(null)
     
@@ -91,15 +93,15 @@ export default {
       if (result.success) {
         toast.add({
           severity: 'success',
-          summary: 'Success',
-          detail: 'Container deleted successfully',
+          summary: t('common.success'),
+          detail: t('container.deleteSuccess'),
           life: 3000
         })
       } else {
         toast.add({
           severity: 'error',
-          summary: 'Error',
-          detail: 'Failed to delete container',
+          summary: t('common.error'),
+          detail: t('container.deleteFail'),
           life: 3000
         })
       }
@@ -109,8 +111,8 @@ export default {
       // API call to restart container would go here
       toast.add({
         severity: 'info',
-        summary: 'Info',
-        detail: `Restarting container ${container.name}...`,
+        summary: t('common.info'),
+        detail: t('container.restartMessage', { name: container.name }),
         life: 3000
       })
     }
