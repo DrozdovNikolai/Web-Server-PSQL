@@ -990,32 +990,46 @@ ALTER PROCEDURE ums.delete_function_user(integer, character varying)
     OWNER TO postgres;
 
 CREATE OR REPLACE FUNCTION ums.select_procedure_user()
-RETURNS json
-LANGUAGE plpgsql
-COST 100
-VOLATILE PARALLEL UNSAFE
+  RETURNS json
+  LANGUAGE plpgsql
+  COST 100
+  VOLATILE
+  PARALLEL UNSAFE
 AS $BODY$
 BEGIN
-    RETURN (
-        SELECT COALESCE(
-            json_agg(
-                json_build_object(
-                    'id', fu.id,
-                    'procedure_name', fu.procedure_name,
-                    'user_id', fu.user_id,
-                    'procedure_definition', pg_get_functiondef(p.oid)
-                )
-            ), '[]'::json
+  RETURN (
+    SELECT COALESCE(
+      json_agg(
+        json_build_object(
+          'id', fu.id,
+          -- Âñåãäà âîçâðàùàåì ïîëíîå èìÿ: ñõåìà.èìÿ_ïðîöåäóðû
+          'procedure_name', parts.schema_name || '.' || parts.func_name,
+          'user_id', fu.user_id,
+          'procedure_definition', pg_get_functiondef(p.oid)
         )
-        FROM ums.ums_procedure_user fu
-        JOIN pg_proc p ON p.proname = split_part(fu.procedure_name, '.', 2)  -- Ð Ð°Ð·Ð´ÐµÐ»ÐµÐ½Ð¸Ðµ Ð¿Ð¾ ÑÑ…ÐµÐ¼Ðµ Ð¸ Ð¸Ð¼ÐµÐ½Ð¸ Ð¿Ñ€Ð¾Ñ†ÐµÐ´ÑƒÑ€Ñ‹
-        JOIN pg_namespace n ON p.pronamespace = n.oid
-        WHERE n.nspname = 
-            CASE 
-                WHEN strpos(fu.procedure_name, '.') > 0 THEN split_part(fu.procedure_name, '.', 1)  -- Ð•ÑÐ»Ð¸ ÑÑ…ÐµÐ¼Ð° ÑƒÐºÐ°Ð·Ð°Ð½Ð°
-                ELSE 'public'  -- Ð•ÑÐ»Ð¸ ÑÑ…ÐµÐ¼Ð° Ð½Ðµ ÑƒÐºÐ°Ð·Ð°Ð½Ð°, Ð¸ÑÐ¿Ð¾Ð»ÑŒÐ·ÑƒÐµÐ¼ public
-            END
-    );
+      ),
+      '[]'::json
+    )
+    FROM ums.ums_procedure_user AS fu
+    CROSS JOIN LATERAL (
+      SELECT
+        CASE
+          WHEN strpos(fu.procedure_name, '.') > 0
+            THEN split_part(fu.procedure_name, '.', 1)
+            ELSE 'public'
+        END AS schema_name,
+        CASE
+          WHEN strpos(fu.procedure_name, '.') > 0
+            THEN split_part(fu.procedure_name, '.', 2)
+            ELSE fu.procedure_name
+        END AS func_name
+    ) AS parts
+    JOIN pg_namespace n
+      ON n.nspname = parts.schema_name
+    JOIN pg_proc p
+      ON p.pronamespace = n.oid
+     AND p.proname     = parts.func_name
+  );
 END;
 $BODY$;
 
