@@ -65,30 +65,43 @@ namespace SuperHeroAPI.Controllers
         [HttpPost("register")]
         public ActionResult<User> Register(UserDto request)
         {
-            // Шаг 1: Создаем нового пользователя и его роль (для демонстрации создаем роль, совпадающую с именем пользователя)
-            User user = new User();
-            string passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
-            user.Username = request.Username;
-            user.PasswordHash = passwordHash;
-
-            var newRole = new Role
+            // 1) Hash password and create new user entity
+            var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            var user = new User
             {
-                RoleName = user.Username
+                Username = request.Username,
+                PasswordHash = passwordHash
             };
 
-            _context.Roles.Add(newRole);
-            _context.SaveChanges();
+            // 2) Determine the role name you want to assign
+            //    (you were using the username as the role name)
+            string roleName = user.Username;
 
+            // 3) Try to fetch existing Role
+            var existingRole = _context.Roles
+                                       .SingleOrDefault(r => r.RoleName == roleName);
+
+            // 4) If no such role, create it
+            if (existingRole == null)
+            {
+                existingRole = new Role { RoleName = roleName };
+                _context.Roles.Add(existingRole);
+                _context.SaveChanges();   // get existingRole.RoleId
+            }
+
+            // 5) Link the user to that role
             user.UserRoles = new List<UserRole>
-            {
-                new UserRole { RoleId = newRole.RoleId }
-            };
+    {
+        new UserRole { RoleId = existingRole.RoleId }
+    };
 
+            // 6) Save the new user
             _context.Users.Add(user);
             _context.SaveChanges();
 
             return Ok(user);
         }
+
 
         [HttpPost("login")]
         public async Task<ActionResult<UserReturn>> Login(UserDto request)
