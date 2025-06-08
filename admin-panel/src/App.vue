@@ -1,7 +1,7 @@
 <template>
   <div class="container">
     <header class="header">
-      <div class="logo">SuperHero API Admin</div>
+      <div class="logo">API Admin</div>
     </header>
     <main class="main-content">
       <router-view />

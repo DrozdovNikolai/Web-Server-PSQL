@@ -21,4 +21,4 @@ npm install
 # Run the development server
 Write-Host "Starting the admin panel..." -ForegroundColor Green
 Write-Host "The admin panel will be available at http://localhost:8080" -ForegroundColor Cyan
-npm run serve 
+npm run dev 

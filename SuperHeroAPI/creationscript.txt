@@ -905,32 +905,45 @@ $BODY$;
 
 
 CREATE OR REPLACE FUNCTION ums.select_function_user()
-RETURNS json
-LANGUAGE plpgsql
-COST 100
-VOLATILE PARALLEL UNSAFE
+  RETURNS json
+  LANGUAGE plpgsql
+  COST 100
+  VOLATILE PARALLEL UNSAFE
 AS $BODY$
 BEGIN
-    RETURN (
-        SELECT COALESCE(
-            json_agg(
-                json_build_object(
-                    'id', fu.id,
-                    'functionname', fu.function_name,
-                    'userid', fu.user_id,
-                    'functiondefinition', pg_get_functiondef(p.oid)
-                )
-            ), '[]'::json
+  RETURN (
+    SELECT COALESCE(
+      json_agg(
+        json_build_object(
+          'id', fu.id,
+          -- ������ ���������� schema.func_name
+          'functionname', parts.schema_name || '.' || parts.func_name,
+          'userid', fu.user_id,
+          'functiondefinition', pg_get_functiondef(p.oid)
         )
-        FROM ums.ums_function_user fu
-        JOIN pg_proc p ON p.proname = split_part(fu.function_name, '.', 2)  -- Разделение по схеме и имени функции
-        JOIN pg_namespace n ON p.pronamespace = n.oid
-        WHERE n.nspname = 
-            CASE 
-                WHEN strpos(fu.function_name, '.') > 0 THEN split_part(fu.function_name, '.', 1)  -- Если схема указана
-                ELSE 'public'  -- Если схема не указана, используем public
-            END
-    );
+      ),
+      '[]'::json
+    )
+    FROM ums.ums_function_user AS fu
+    CROSS JOIN LATERAL (
+      SELECT
+        CASE
+          WHEN strpos(fu.function_name, '.') > 0
+            THEN split_part(fu.function_name, '.', 1)
+          ELSE 'public'
+        END AS schema_name,
+        CASE
+          WHEN strpos(fu.function_name, '.') > 0
+            THEN split_part(fu.function_name, '.', 2)
+          ELSE fu.function_name
+        END AS func_name
+    ) AS parts
+    JOIN pg_namespace AS n
+      ON n.nspname = parts.schema_name
+    JOIN pg_proc AS p
+      ON p.proname = parts.func_name
+     AND p.pronamespace = n.oid
+  );
 END;
 $BODY$;
 
