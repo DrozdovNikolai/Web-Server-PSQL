@@ -1,6 +1,6 @@
 # Container Deployment Guide
 
-This guide explains how to deploy and access SuperHeroAPI containers in Kubernetes.
+This guide explains how to deploy and access containers in Kubernetes.
 
 ## Access Methods
 
