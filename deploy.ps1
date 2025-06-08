@@ -24,9 +24,8 @@ kubectl apply -f k8s/configmap.yaml
 kubectl apply -f k8s/secret.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s-role.yaml
-kubectl apply -f k8s-rolebinding.yaml
-
+kubectl apply -f k8s/k8s-role.yaml
+kubectl apply -f k8s/k8s-rolebinding.yaml
 kubectl apply -f k8s/persistent-volume.yaml
 kubectl apply -f k8s/persistent-volume-claim.yaml
 kubectl apply -f k8s/file-ingress.yaml
