@@ -234,35 +234,31 @@ CREATE OR REPLACE FUNCTION ums.add_permission_to_role()
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- ����� �� ���������
+    schema_name TEXT := 'public';
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- �������� ��� ���� �� role_id
     SELECT j.role_name INTO role_name FROM ums.ums_roles j WHERE id = NEW.role_id;
 
-    -- ���������, ���� �� ����� � ����� �������
     IF POSITION('.' IN NEW.table_name) > 0 THEN
-        -- table_name �������� 'schema.table' ��� 'table.column'
+        -- table_name
         IF NEW.operation IN (0,1,2) AND POSITION('.' IN split_part(NEW.table_name, '.', 2)) > 0 THEN
-            -- ������: table.column (��� �����)
+            -- table.column
             table_name := split_part(NEW.table_name, '.', 1);
             column_name := split_part(NEW.table_name, '.', 2);
             full_table_ref := format('%I.%I', schema_name, table_name);
         ELSE
-            -- ������: schema.table
+            -- schema.table
             schema_name := split_part(NEW.table_name, '.', 1);
             table_name := split_part(NEW.table_name, '.', 2);
             full_table_ref := format('%I.%I', schema_name, table_name);
         END IF;
     ELSE
-        -- ������ ��� �������
         table_name := NEW.table_name;
         full_table_ref := format('%I.%I', schema_name, table_name);
     END IF;
 
-    -- ��������� ����������
     IF NEW.operation = 0 THEN
         IF column_name IS NOT NULL THEN
             EXECUTE format('GRANT INSERT (%I) ON TABLE %s TO %I', column_name, full_table_ref, role_name);
@@ -336,17 +332,14 @@ CREATE OR REPLACE FUNCTION ums.delete_permission_from_role()
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- ����� �� ���������
+    schema_name TEXT := 'public';
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- �������� ��� ���� �� role_id
     SELECT j.role_name INTO role_name FROM ums.ums_roles j WHERE id = OLD.role_id;
 
-    -- ���������� ������: column-level ��� schema.table
     IF POSITION('.' IN OLD.table_name) > 0 THEN
-        -- ���� ������ ����� �������� ��� ���� ����� � ������ ��� table.column
         IF OLD.operation IN (0,1,2) AND POSITION('.' IN split_part(OLD.table_name, '.', 2)) > 0 THEN
             -- column-level
             table_name := split_part(OLD.table_name, '.', 1);
@@ -359,7 +352,6 @@ BEGIN
             full_table_ref := format('%I.%I', schema_name, table_name);
         END IF;
     ELSE
-        -- ������ ��� �������, ��� �����
         table_name := OLD.table_name;
         full_table_ref := format('%I.%I', schema_name, table_name);
     END IF;
@@ -437,10 +429,9 @@ DECLARE
     role_name TEXT;
     r RECORD;
 BEGIN
-    -- �������� ��� ���� �� role_id
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- CREATE ON DATABASE (������ ���� ���, �� ������� �� ����)
+    -- CREATE ON DATABASE
     IF OLD.create_table_grant <> NEW.create_table_grant THEN
         IF OLD.create_table_grant THEN
             EXECUTE format('REVOKE CREATE ON DATABASE %I FROM %I', 'superherodb', role_name);
@@ -450,7 +441,6 @@ BEGIN
         END IF;
     END IF;
 
-    -- ����� ���� ���������������� ����
     FOR r IN
         SELECT schema_name
         FROM information_schema.schemata
@@ -486,7 +476,7 @@ BEGIN
             END IF;
         END IF;
 
-        -- ������� USAGE ����� ��������� �� ������� (����� �� �������, �� ����� ��������)
+
     END LOOP;
 
     RETURN NEW;
@@ -530,21 +520,18 @@ VOLATILE NOT LEAKPROOF
 AS $BODY$
 DECLARE
     role_name TEXT;
-    schema_name TEXT := 'public'; -- �� ���������
+    schema_name TEXT := 'public';
     table_name TEXT;
     column_name TEXT;
     full_table_ref TEXT;
 BEGIN
-    -- �������� ��� ����
     SELECT role_name INTO role_name FROM ums.ums_roles WHERE role_id = NEW.role_id;
 
-    -- ������ ���� operation ��� table_name ����������
     IF OLD.operation <> NEW.operation OR OLD.table_name <> NEW.table_name THEN
 
         ---------------------------------------------------------------------
-        -- 1. REVOKE ������ �����
+        -- 1. REVOKE 
         ---------------------------------------------------------------------
-        -- ���������� �����, ������� � ������� �� OLD.table_name
         column_name := NULL;
         IF POSITION('.' IN OLD.table_name) > 0 THEN
             IF OLD.operation IN (0,1,2) AND POSITION('.' IN split_part(OLD.table_name, '.', 2)) > 0 THEN
@@ -584,9 +571,9 @@ BEGIN
         END IF;
 
         ---------------------------------------------------------------------
-        -- 2. GRANT ����� �����
+        -- 2. GRANT
         ---------------------------------------------------------------------
-        schema_name := 'public'; -- ���������� ����� �� ���������
+        schema_name := 'public';
         column_name := NULL;
 
         IF POSITION('.' IN NEW.table_name) > 0 THEN
@@ -635,7 +622,6 @@ $BODY$;
 ALTER FUNCTION ums.update_role_permissions()
     OWNER TO postgres;
 
--- Создание или обновление триггеров для таблиц
 CREATE OR REPLACE TRIGGER tr_create_role_from_roles_table
     AFTER INSERT
     ON ums.ums_roles
@@ -736,7 +722,7 @@ BEGIN
     RETURN (
         SELECT COALESCE(
             json_agg(row_to_json(t)), 
-            '[]'::json  -- Если данных нет, возвращаем пустой JSON-массив
+            '[]'::json
         )
         FROM (SELECT * FROM ums.ums_globalpermissions) t
     );
@@ -828,9 +814,7 @@ CREATE OR REPLACE PROCEDURE ums.update_globalpermissions(
 LANGUAGE 'plpgsql'
 AS $BODY$
 BEGIN
-    -- Проверка, существует ли запись с данным permission_id
     IF EXISTS (SELECT 1 FROM ums.ums_globalpermissions WHERE permission_id = p_permissionid and schema_name=p_schema_name) THEN
-        -- Если существует, выполняем обновление
         UPDATE ums.ums_globalpermissions
         SET role_id = p_roleid,
             schema_name = p_schema_name,
@@ -851,7 +835,6 @@ BEGIN
         WHERE permission_id = p_permissionid and
 	      schema_name = p_schema_name;
     ELSE
-        -- Если записи нет, вставляем новую
         INSERT INTO ums.ums_globalpermissions (
             role_id,
             schema_name,
@@ -979,7 +962,6 @@ DECLARE
     v_funcname text;
     v_full_name text;
 BEGIN
-    -- Если имя функции содержит схему, извлекаем схему и имя функции
     IF position('.' in p_functionname) > 0 THEN
         v_schema := split_part(p_functionname, '.', 1);
         v_funcname := split_part(p_functionname, '.', 2);
@@ -987,15 +969,12 @@ BEGIN
         v_funcname := p_functionname;
     END IF;
 
-    -- Полное имя функции с экранированием
+
     v_full_name := format('%I.%I', v_schema, v_funcname);
 
-    -- Удаляем функцию, если существует (предполагается, что сигнатура неизвестна)
-    -- Это удалит все функции с таким именем вне зависимости от сигнатуры
-    -- Лучше явно указать сигнатуру, если известно, чтобы избежать побочных эффектов
+
     EXECUTE format('DROP FUNCTION IF EXISTS %s CASCADE', v_full_name);
 
-    -- Удаляем запись из таблицы
     DELETE FROM ums.ums_function_user WHERE id = p_id;
 END;
 $BODY$;
@@ -1076,7 +1055,6 @@ DECLARE
     v_procname text;
     v_full_name text;
 BEGIN
-    -- ��������� ���, ���� ������� �����
     IF position('.' in p_procedure_name) > 0 THEN
         v_schema := split_part(p_procedure_name, '.', 1);
         v_procname := split_part(p_procedure_name, '.', 2);
@@ -1084,13 +1062,10 @@ BEGIN
         v_procname := p_procedure_name;
     END IF;
 
-    -- ���������� ������ ��� ��������� ��� ��������
     v_full_name := format('%I.%I', v_schema, v_procname);
 
-    -- ������� ��������� (��������������, ��� � �� ��� ���������� ��� ��������� �����������)
     EXECUTE format('DROP PROCEDURE IF EXISTS %s', v_full_name);
 
-    -- ������� ������ �� �������
     DELETE FROM ums.ums_procedure_user WHERE id = p_id;
 END;
 $BODY$;
@@ -1118,7 +1093,6 @@ DECLARE
   row_idx        record;
   row_comment    record;
 BEGIN
-  -- �������� OID, ����� � ��� �������
   SELECT (table_name::regclass)::oid,
          n.nspname,
          c.relname
@@ -1166,15 +1140,12 @@ BEGIN
       c.contype,
       c.condeferrable,
       c.condeferred,
-      -- ��� CHECK
       pg_get_expr(c.conbin, c.conrelid) AS check_expr,
-      -- ��� FK
       n2.nspname    AS ref_schema,
       c2.relname    AS ref_table,
       c.confmatchtype,
       c.confupdtype,
       c.confdeltype,
-      -- ������ ������
       ARRAY(
         SELECT quote_ident(a2.attname)
         FROM unnest(c.conkey) AS ck(attnum)
@@ -1272,7 +1243,6 @@ BEGIN
     table_def := table_def || constraint_def || E'\n';
   END LOOP;
 
-  -- ������� ��������� ������� � ��������� CREATE TABLE
   table_def := regexp_replace(
     table_def,
     ',\s*\n$',
@@ -1280,7 +1250,6 @@ BEGIN
     'm'
   ) || ');' || E'\n\n';
 
-  -- 2) ����������� �� �������
   SELECT obj_description(reg_oid, 'pg_class') INTO comment_text;
   IF comment_text IS NOT NULL THEN
     table_def := table_def
@@ -1288,7 +1257,6 @@ BEGIN
       || E'\n';
   END IF;
 
-  -- 2.1) ����������� �� �������
   FOR row_comment IN
     SELECT a.attname, col_description(a.attrelid, a.attnum) AS comment
       FROM pg_attribute a
@@ -1306,7 +1274,6 @@ BEGIN
   END LOOP;
   table_def := table_def || E'\n';
 
-  -- 3) �������
   FOR row_idx IN
     SELECT indexdef
       FROM pg_indexes
@@ -1440,7 +1407,6 @@ DECLARE
     v_table_name text;
     v_full_trigger_name text;
 BEGIN
-    -- Если имя триггера содержит схему (например: schema.trigger), извлекаем схему и имя триггера
     IF position('.' in p_trigger_name) > 0 THEN
         v_schema := split_part(p_trigger_name, '.', 1);
         v_trigger_name := split_part(p_trigger_name, '.', 2);
@@ -1448,18 +1414,15 @@ BEGIN
         v_trigger_name := p_trigger_name;
     END IF;
 
-    -- Получаем имя таблицы, к которой привязан триггер
     SELECT event_object_table INTO v_table_name
     FROM information_schema.triggers
     WHERE trigger_schema = v_schema AND trigger_name = v_trigger_name
     LIMIT 1;
 
-    -- Если таблица найдена, удаляем триггер
     IF v_table_name IS NOT NULL THEN
         EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I CASCADE', v_trigger_name, v_schema, v_table_name);
     END IF;
 
-    -- Удаляем запись из таблицы
     DELETE FROM ums.ums_trigger_user WHERE id = p_id;
 END;
 $BODY$;
@@ -1802,10 +1765,9 @@ AS
 $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = p_schemaname) THEN
-        RAISE EXCEPTION '����� "%" �� ����������', p_schemaname;
+        RAISE EXCEPTION 'Schema "%" doesn't exists�', p_schemaname;
     END IF;
 
-    -- Удаляем схему
     EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', p_schemaname);
 END;
 $$;
@@ -1817,10 +1779,9 @@ AS
 $$
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = p_schemaname) THEN
-        RAISE EXCEPTION '����� "%" �� ����������', p_schemaname;
+        RAISE EXCEPTION 'Schema "%" doesn't exists�', p_schemaname;
     END IF;
 
-    -- Создаём схему
     EXECUTE format('CREATE SCHEMA %I', p_schemaname);
 END;
 $$;
