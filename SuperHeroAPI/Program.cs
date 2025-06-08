@@ -21,8 +21,10 @@ using OfficeOpenXml;
 using SuperHeroAPI.Middleware;
 using SuperHeroAPI.Services;
 using SuperHeroAPI.Services.ContainerService;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
-// Р’РєР»СЋС‡Р°РµРј РїРѕРґРґРµСЂР¶РєСѓ СѓСЃС‚Р°СЂРµРІС€РµРіРѕ РїРѕРІРµРґРµРЅРёСЏ РґР»СЏ timestamp Р±РµР· time zone
+// Р'РєР»СЋС‡Р°РµРј РїРѕРґРґРµСЂР¶РєСѓ СѓСЃС‚Р°СЂРµРІС€РµРіРѕ РїРѕРІРµРґРµРЅРёСЏ РґР»СЏ timestamp Р±РµР· time zone
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // Load environment variables from .env file
@@ -147,6 +149,17 @@ builder.Services.AddScoped<IRoleService, RoleService>();
 builder.Services.AddScoped<IPermission, PermissionService>();
 builder.Services.AddScoped<IContainerService, ContainerService>();
 builder.Services.AddHostedService<DatabaseSetupService>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddConcurrencyLimiter("DbConcurrency", cfg =>
+    {
+        cfg.PermitLimit = 100;                 // max concurrent
+        cfg.QueueLimit = 1_000;              // queued requests
+        cfg.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        //cfg.RejectionStatusCode = 429;        // Too Many Requests
+    });
+});
+//builder.Services.AddHostedService<DataArchivingService>(); сервис архивации в разработке
 builder.Services.AddDbContext<DataContext>(options =>
     options.UseNpgsql($"Host={Env.GetString("DB_HOST")}:{Env.GetString("DB_PORT")}; Database={Env.GetString("DB_NAME")}; Username={Env.GetString("DB_USER")}; Password={Env.GetString("DB_PASSWORD")}")
            .UseSnakeCaseNamingConvention());
