@@ -1,13 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace SuperHeroAPI.md2;
+namespace SuperHeroAPI.Models;
 
-public partial class FunctionUser
+public partial class TableUser
 {
     public int Id { get; set; }
 
-    public string? FunctionName { get; set; }
+    public string? Tablename { get; set; }
 
     public int? UserId { get; set; }
 

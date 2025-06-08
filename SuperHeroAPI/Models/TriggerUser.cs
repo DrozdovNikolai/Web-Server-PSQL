@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace SuperHeroAPI.md2;
+namespace SuperHeroAPI.Models;
 
 public partial class TriggerUser
 {

@@ -24,7 +24,6 @@ using SuperHeroAPI.Services.ContainerService;
 using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
 
-// Р'РєР»СЋС‡Р°РµРј РїРѕРґРґРµСЂР¶РєСѓ СѓСЃС‚Р°СЂРµРІС€РµРіРѕ РїРѕРІРµРґРµРЅРёСЏ РґР»СЏ timestamp Р±РµР· time zone
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
 
 // Load environment variables from .env file
@@ -81,7 +80,6 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
-        //           .
         OnMessageReceived = context =>
         {
             //   OPTIONS,   
