@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using PostgreSQL.Data;
 using System.Data;
+using System.Data.Common;
 using System.Text.Json;
 
 namespace SuperHeroAPI.Controllers
