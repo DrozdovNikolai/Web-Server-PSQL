@@ -2,6 +2,8 @@
 
 This project provides a Dockerized .NET 8 API with Kubernetes deployment and a Vue.js admin panel for managing containers.
 
+Test it here:
+https://ncatbird.ru/adm/
 ## Prerequisites
 
 - Docker installed and running
