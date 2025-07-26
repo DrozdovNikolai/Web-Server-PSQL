@@ -22,7 +22,8 @@
 | Credential stuffing | generic login errors, rate limit, BCrypt work factor 12 |
 | Stolen JWT | 15-minute lifetime, issuer/audience checks, server-side `jti` revocation, no long-lived refresh token |
 | IDOR / privilege escalation | self-service profile route plus separate administrator policies |
-| SQL injection | no SQL text in the contract; schema/name/signature catalog filters and argument values are parameters, while executable identifiers and casts come only from the resolved `pg_catalog` row and are quoted |
+| SQL injection | no SQL text in the contract; schema/name/optional-overload catalog filters and argument values are parameters; request argument names only match metadata, while all executable identifiers, named-notation tokens and casts come from the resolved `pg_catalog` row and are quoted |
+| Overload confusion | deterministic name/default/JSON-kind matching, conservative ties, structured `409` candidates, optional exact overload and duplicate JSON-key rejection |
 | Unexpected routine privilege | schema allowlist, separate execution policy, PostgreSQL `EXECUTE` grants and default block for `SECURITY DEFINER` routines |
 | Data exhaustion | page-size, command timeout, cancellation and response limits |
 | Cursor/Excel exhaustion | cursor fetch remains transactional and has independent row/column/cell/source/file limits; workbook settings and worksheet bounds are validated |
@@ -36,7 +37,7 @@
 
 - The API database account determines which relations the read-only browser can see. Use a least-privileged account for public demos.
 - An allowlisted routine can intentionally mutate data or perform external work. Review routine bodies, revoke PostgreSQL's default `PUBLIC` execute grants where appropriate, and grant the API role `EXECUTE` only on routines intended for REST exposure.
-- A routine rename or input-type change is an intentional breaking change to its stable REST signature. Catalog-driven clients refresh metadata; hand-written clients version such changes like any other API contract.
+- A routine or argument rename is an intentional breaking change to its REST contract. A type change may alter automatic overload selection; catalog-driven clients refresh metadata and hand-written clients version such changes like any other API contract.
 - A malicious file matching an allowed signature may still be harmful when opened. Production deployments should add malware scanning and isolated object storage.
 - The example NetworkPolicy permits TCP 443 and PostgreSQL 5432 egress broadly because database/API CIDRs vary. Narrow these ranges in production.
 - Access tokens live in browser `sessionStorage`; an XSS would be able to read them. The frontend CSP, dependency audits and lack of raw HTML reduce but do not eliminate that risk.

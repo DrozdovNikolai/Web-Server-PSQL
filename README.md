@@ -4,12 +4,13 @@
 
 A security-first .NET and Vue gateway that exposes existing PostgreSQL functions, procedures and cursor-backed reports through typed REST calls, with Excel export, a database explorer and optional deployment automation.
 
-The project began as a university diploma whose central idea was calling PostgreSQL stored routines over REST. It has since been rebuilt as a portfolio-grade system: exact overload-aware routine discovery, parameter-only invocation, no arbitrary SQL endpoint, deny-by-default authorization, revocable JWT sessions, bounded results, automated tests and a polished web console.
+The project began as a university diploma whose central idea was calling PostgreSQL stored routines over REST. It has since been rebuilt as a portfolio-grade system: catalog-driven overload resolution, named parameter-only invocation, no arbitrary SQL endpoint, deny-by-default authorization, revocable JWT sessions, bounded results, automated tests and a polished web console.
 
 ## What it does
 
-- Discovers PostgreSQL function/procedure signatures and invokes them through stable schema/name/signature REST addresses using catalog-resolved types and positional parameters.
-- Supports overloaded routines, default arguments, `IN`/`OUT`/`INOUT` parameters, scalar results and set-returning functions.
+- Discovers PostgreSQL function/procedure signatures and invokes them through stable schema/name REST addresses using named JSON arguments and catalog-resolved types.
+- Automatically resolves overloaded routines by argument names, defaults and JSON/type compatibility; an explicit overload is only an ambiguity escape hatch.
+- Supports default arguments in any named position, `IN`/`OUT`/`INOUT` parameters, scalar results and set-returning functions.
 - Fetches `refcursor` functions inside their PostgreSQL transaction and returns the rows as JSON or a configurable `.xlsx` workbook.
 - Browses PostgreSQL schemas, relations, triggers and paginated rows through server-generated read-only queries.
 - Manages application users and roles without exposing password hashes or persisted sessions.
@@ -68,9 +69,9 @@ All API routes are served below `/server` by default. Swagger is exposed only in
 
 ## PostgreSQL routines over REST
 
-`GET /server/api/database/routines?schema=public` returns exact signatures, PostgreSQL argument types, modes, defaults, volatility, cursor capability and whether each routine is allowed for REST invocation. PostgreSQL OIDs are deliberately absent from the public contract.
+`GET /server/api/database/routines?schema=public` returns exact signatures, PostgreSQL argument names/types, modes, defaults, volatility, cursor capability and whether each routine is allowed for REST invocation. PostgreSQL OIDs are deliberately absent from the public contract. Discovery is useful for generic consoles, but an application client can invoke a routine without loading the catalog first.
 
-Invoke that exact function or procedure by passing positional JSON values:
+Invoke a function or procedure by passing named JSON values:
 
 ```http
 POST /server/api/database/routines/public/calculate_order_total/invoke
@@ -80,8 +81,10 @@ Content-Type: application/json
 
 ```json
 {
-  "identityArguments": "integer, numeric",
-  "arguments": [1, 0.2]
+  "arguments": {
+    "order_id": 1,
+    "tax_rate": 0.2
+  }
 }
 ```
 
@@ -91,7 +94,24 @@ Scalar functions return their scalar result directly:
 144.00
 ```
 
-Set-returning and cursor functions return a JSON array, composite results return an object, and procedures without `OUT` values return `204 No Content`. `identityArguments` is the stable overload key returned by the catalog; it can be omitted when the schema/name pair is unique. The server parameterizes the catalog lookup, resolves identifiers and casts from `pg_catalog`, then binds argument values. PostgreSQL OIDs remain an internal implementation detail.
+Set-returning and cursor functions return a JSON array, composite and JSON results return objects, and procedures without `OUT` values return `204 No Content`.
+
+The server loads same-name candidates from `pg_catalog`, matches argument names and required/default parameters, validates each JSON value against the candidate's PostgreSQL types and selects the single best match. JSON integers prefer `integer`, then `bigint` when required; fractional numbers prefer `numeric`. Names, casts and named-notation tokens used in generated SQL come only from the resolved catalog row, while values remain bound parameters.
+
+If a request such as `{ "arguments": { "value": null } }` matches multiple overloads equally, the API returns `409 Problem Details` with a structured `candidates` list. Only then does the client need the optional canonical overload returned by the catalog:
+
+```json
+{
+  "overload": "bigint",
+  "arguments": {
+    "value": "9007199254740993"
+  }
+}
+```
+
+This explicit form also lets JavaScript clients preserve integers larger than their safe numeric range. PostgreSQL OIDs never appear in either contract.
+
+One ambiguity cannot be solved by a type hint: PostgreSQL treats `f(integer)` and `f(integer, integer DEFAULT 1)` as the same callable shape when only `value` is supplied. The gateway detects that case before execution and asks the caller to supply the additional argument or the database author to remove the shadowing overload.
 
 ### Cursor-backed Excel reports
 
@@ -105,8 +125,9 @@ Content-Type: application/json
 
 ```json
 {
-  "identityArguments": "numeric",
-  "arguments": [100],
+  "arguments": {
+    "minimum_subtotal": 100
+  },
   "excel": {
     "fileName": "orders-report.xlsx",
     "sheetName": "Orders",
@@ -166,7 +187,7 @@ Quality checks:
 - The demo intentionally has no long-lived refresh token: after expiry, the user authenticates again.
 - Authorization has an authenticated fallback policy, so new endpoints are closed unless explicitly marked anonymous.
 - Identifiers accepted by the database browser have a strict PostgreSQL identifier grammar; values are parameterized, results are paginated and commands have a timeout.
-- Routine schema/name/signature lookups are parameterized, while names and casts used for execution come back from `pg_catalog`. Only configured schemas are invocable; argument values are bound parameters and JSON/cursor/Excel results have row, cell, byte and timeout limits.
+- Routine schema/name/optional-overload lookups are parameterized. Automatic resolution uses argument names and JSON kinds, while every executable name and cast comes back from `pg_catalog`. Only configured schemas are invocable; values are bound parameters and JSON/cursor/Excel results have row, cell, byte and timeout limits.
 - `SECURITY DEFINER`, variadic, composite, array and pseudo-type inputs are blocked by default. The API database role still determines what each routine may do, so production must grant it only the intended `EXECUTE` privileges.
 - Kubernetes RBAC is namespace-scoped. Pods run non-root with a read-only root filesystem, default seccomp, no privilege escalation, dropped capabilities and resource limits.
 - Public workload ingress is opt-in and configuration fails at startup unless its base URL is HTTPS and a TLS Secret is named.

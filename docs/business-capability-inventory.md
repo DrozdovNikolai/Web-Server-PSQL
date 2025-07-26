@@ -10,7 +10,7 @@ checklist for future changes.
 
 | Original capability | Business purpose | Current status | Direction |
 |---|---|---|---|
-| Invoke PostgreSQL functions and procedures over HTTP | Turn database routines into an API without writing a controller per routine | Preserved and redesigned | Keep as the core product. Resolve a stable schema/name/signature on the server; PostgreSQL OIDs remain internal. |
+| Invoke PostgreSQL functions and procedures over HTTP | Turn database routines into an API without writing a controller per routine | Preserved and redesigned | Keep as the core product. Resolve overloads from schema/name plus named JSON arguments; use a canonical overload only for genuine ambiguity. PostgreSQL OIDs remain internal. |
 | Invoke functions returning `refcursor` | Return report-shaped database results through REST | Restored | Fetch the cursor in the same transaction and return its rows, not the temporary cursor name. |
 | Export a `refcursor` result to Excel | Let the database define a report query while the client controls workbook presentation | Restored | Generate bounded `.xlsx` files from validated JSON settings. |
 | Generate table CRUD routines and expose them as REST | Rapidly publish database-backed CRUD resources | Not restored | Candidate feature. Rebuild from templates and catalog metadata; never concatenate request SQL. |
@@ -45,7 +45,7 @@ Before a release, verify all of the following against a real PostgreSQL instance
 2. Procedures with side effects and `OUT` parameters can be invoked.
 3. A `refcursor` function returns fetched rows through JSON.
 4. The same `refcursor` result can be downloaded as a valid `.xlsx` workbook.
-5. Trailing PostgreSQL defaults and explicit `NULL` arguments work.
+5. Named PostgreSQL defaults (including a skipped optional argument before a supplied one) and explicit `NULL` arguments work.
 6. Disallowed schemas, missing privileges and `SECURITY DEFINER` routines are blocked.
 7. Routine identifiers and values cannot alter the generated SQL structure.
 8. Response, cursor, workbook, file and execution-time limits are enforced.

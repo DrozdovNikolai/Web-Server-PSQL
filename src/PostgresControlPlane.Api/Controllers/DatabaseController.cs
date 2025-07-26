@@ -178,7 +178,7 @@ public sealed partial class DatabaseController : ControllerBase
         var result = await _routineService.InvokeAsync(
             schema,
             routineName,
-            request.IdentityArguments,
+            request.Overload,
             request.Arguments,
             cancellationToken);
 
@@ -191,10 +191,9 @@ public sealed partial class DatabaseController : ControllerBase
             RoutineInvocationStatus.NotFound => Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Routine not found"),
-            RoutineInvocationStatus.Ambiguous => Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Routine name is ambiguous",
-                detail: result.Detail),
+            RoutineInvocationStatus.Ambiguous => CreateAmbiguousRoutineProblem(
+                result.Detail,
+                result.Candidates),
             RoutineInvocationStatus.NotInvocable => Problem(
                 statusCode: StatusCodes.Status422UnprocessableEntity,
                 title: "Routine cannot be invoked",
@@ -247,7 +246,7 @@ public sealed partial class DatabaseController : ControllerBase
         var result = await _routineService.ExportCursorToExcelAsync(
             schema,
             routineName,
-            request.IdentityArguments,
+            request.Overload,
             request.Arguments,
             request.Excel,
             cancellationToken);
@@ -264,10 +263,9 @@ public sealed partial class DatabaseController : ControllerBase
             RoutineExcelExportStatus.NotFound => Problem(
                 statusCode: StatusCodes.Status404NotFound,
                 title: "Routine not found"),
-            RoutineExcelExportStatus.Ambiguous => Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "Routine name is ambiguous",
-                detail: result.Detail),
+            RoutineExcelExportStatus.Ambiguous => CreateAmbiguousRoutineProblem(
+                result.Detail,
+                result.Candidates),
             RoutineExcelExportStatus.NotInvocable => Problem(
                 statusCode: StatusCodes.Status422UnprocessableEntity,
                 title: "Routine cannot be invoked",
@@ -299,6 +297,20 @@ public sealed partial class DatabaseController : ControllerBase
                 title: "Excel export failed",
                 detail: "PostgreSQL rejected the cursor invocation or the workbook could not be generated.")
         };
+    }
+
+    private ConflictObjectResult CreateAmbiguousRoutineProblem(
+        string? detail,
+        IReadOnlyList<RoutineOverloadCandidateResponse>? candidates)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = StatusCodes.Status409Conflict,
+            Title = "Routine invocation is ambiguous",
+            Detail = detail
+        };
+        problem.Extensions["candidates"] = candidates ?? [];
+        return Conflict(problem);
     }
 
     private IActionResult CreateRoutineResult(RoutineInvocationResponse response)

@@ -19,7 +19,7 @@ public sealed record DatabaseRoutineResponse(
     string Name,
     string Type,
     string Signature,
-    string IdentityArguments,
+    string Overload,
     string? ReturnType,
     bool ReturnsSet,
     bool ReturnsCursor,
@@ -32,11 +32,17 @@ public sealed record DatabaseRoutineResponse(
 public sealed class RoutineInvocationRequest
 {
     [MaxLength(1024)]
-    public string? IdentityArguments { get; init; }
+    public string? Overload { get; init; }
 
     [Required]
-    public IReadOnlyList<JsonElement> Arguments { get; init; } = [];
+    [MaxLength(64)]
+    public IReadOnlyDictionary<string, JsonElement> Arguments { get; init; } =
+        new Dictionary<string, JsonElement>();
 }
+
+public sealed record RoutineOverloadCandidateResponse(
+    string Overload,
+    string Signature);
 
 public sealed record RoutineInvocationResponse(
     string Type,
@@ -49,10 +55,12 @@ public sealed record RoutineInvocationResponse(
 public sealed class RoutineExcelExportRequest
 {
     [MaxLength(1024)]
-    public string? IdentityArguments { get; init; }
+    public string? Overload { get; init; }
 
     [Required]
-    public IReadOnlyList<JsonElement> Arguments { get; init; } = [];
+    [MaxLength(64)]
+    public IReadOnlyDictionary<string, JsonElement> Arguments { get; init; } =
+        new Dictionary<string, JsonElement>();
 
     [Required]
     public ExcelExportSettings Excel { get; init; } = new();

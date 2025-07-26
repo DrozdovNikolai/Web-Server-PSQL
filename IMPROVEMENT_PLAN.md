@@ -22,7 +22,7 @@
 
 Проект позиционируется как security-first control plane, который:
 
-- обнаруживает точные сигнатуры PostgreSQL routines и вызывает функции/процедуры через REST без приёма SQL от клиента;
+- обнаруживает PostgreSQL routines и автоматически выбирает перегрузку по именованным JSON-аргументам, не принимая SQL или обязательные типы от клиента;
 - раскрывает результаты `refcursor` как JSON и формирует из них настраиваемые Excel-отчёты;
 - предоставляет защищённый read-only API для просмотра схем, таблиц, triggers и страниц данных;
 - управляет пользователями и ролями самого приложения;
@@ -72,7 +72,7 @@
 | Legacy и структура | Готово | Удалены Weather/SuperHero, arbitrary SQL, архивирование и старые контроллеры; solution переименован и разделён на `src`/`tests`. |
 | Secrets и конфигурация | Готово в текущем дереве | Реальные значения удалены; добавлены typed options, startup validation, `.env.example`, ignore rules и пример Kubernetes Secret. |
 | Auth и API | Готово | Deny-by-default, короткий JWT с `jti`, server-side revocation, rate limit, DTO-only responses, `ProblemDetails`, pagination и защита последнего администратора. |
-| PostgreSQL | Готово | Overload-aware gateway со стабильным адресом schema/name/signature, натуральными JSON-ответами, транзакционным `refcursor`, Excel-экспортом, allowlist схем и независимыми лимитами; OID остаётся внутренним. |
+| PostgreSQL | Готово | Gateway со стабильным адресом schema/name, именованными JSON-аргументами, автоматическим overload resolution, натуральными JSON-ответами, транзакционным `refcursor`, Excel-экспортом, allowlist схем и независимыми лимитами; типы и OID не требуются обычному клиенту. |
 | Audit и files | Готово | Metadata-only audit с correlation ID и retention; uploads закрыты policy, ограничены и проверяются по MIME/signature/Office structure. |
 | Kubernetes | Готово как opt-in adapter | Namespaced RBAC без list/watch, restricted pods, PVC, NetworkPolicy, quota/limits, TLS-only public ingress и идемпотентный rollback. |
 | Frontend | Готово | Новый responsive Vue UI, Routine Gateway без OID, формы аргументов и Excel, sessionStorage auth, route guards, logout/revocation, error/loading/empty states и CSP. |
@@ -81,15 +81,15 @@
 
 ### Зафиксированный результат проверки
 
-Проверки выполнены 26 июля 2026 года из текущего рабочего дерева:
+Проверки повторно выполнены 27 июля 2026 года из текущего рабочего дерева:
 
 - `dotnet restore --locked-mode`, formatting и clean Release build прошли с 0 warnings/0 errors;
-- backend: 14 из 14 HTTP/security/PostgreSQL integration tests прошли, включая реальный Testcontainer;
+- backend: 14 из 14 HTTP/security/PostgreSQL integration tests прошли, включая реальный Testcontainer и матрицу автоматического разрешения overload по именам, JSON-типам, defaults и числовым диапазонам;
 - frontend: lint, 12 из 12 session/navigation/routine/result/Excel tests и production build прошли;
 - NuGet и npm audits не обнаружили известных уязвимостей;
 - EF Core сгенерировал идемпотентный migration script, OpenAPI 3.0.4 содержит 23 path, включая routine invocation и Excel export;
 - production Docker images API и web успешно собраны и запускаются от непривилегированных пользователей;
-- Compose smoke-test подтвердил readiness, login/profile, натуральный scalar result, `refcursor` как JSON, валидный `.xlsx`, procedure `204`, отсутствие OID в клиентском каталоге, фильтрацию внутренней схемы `control` и отзыв JWT после logout;
+- Compose smoke-test подтвердил вызов без сигнатуры, автоматический выбор `integer`/`text`, структурированный `409` для `null`, натуральный scalar result, `refcursor` как JSON, валидный `.xlsx`, procedure `204`, поле `overload` без OID в клиентском каталоге и web `200`;
 - Compose-конфигурация и 12 Kubernetes manifest-файлов проходят локальную валидацию;
 - временные smoke-test containers и volumes после проверки удалены.
 

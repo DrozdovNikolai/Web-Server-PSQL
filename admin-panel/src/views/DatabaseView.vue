@@ -200,7 +200,7 @@ onMounted(loadSchemas)
 
       <section class="routine-workbench">
         <div class="panel routine-list">
-          <div class="panel__header"><div><h2>Stored routines</h2><p>Exact PostgreSQL signatures; overload-safe.</p></div></div>
+          <div class="panel__header"><div><h2>Stored routines</h2><p>Named JSON arguments; overload-safe.</p></div></div>
           <button v-for="routine in routines" :key="routineKey(routine)" type="button" class="routine-item" :class="{ 'routine-item--active': selectedRoutine && routineKey(selectedRoutine) === routineKey(routine) }" @click="selectRoutine(routine)">
             <span><strong>{{ routine.name }}</strong><small>{{ routine.type.toLowerCase() }} · {{ routine.volatility.toLowerCase() }}</small></span>
             <span class="routine-item__state" :class="{ 'routine-item__state--ready': routine.canInvoke }">{{ routine.canInvoke ? 'REST ready' : 'blocked' }}</span>
@@ -260,7 +260,7 @@ onMounted(loadSchemas)
 
               <p v-if="routineError" class="notice notice--error" role="alert">{{ routineError }}</p>
               <div class="routine-actions">
-                <span>Values are bound as parameters; SQL text and PostgreSQL OIDs are not part of the client contract.</span>
+                <span>Arguments are named and bound; the selected overload is catalog-derived, while SQL text and PostgreSQL OIDs stay internal.</span>
                 <div class="routine-actions__buttons">
                   <button v-if="selectedRoutine.returnsCursor" class="button button--quiet" type="button" :disabled="invoking || exporting" @click="exportRoutine">{{ exporting ? 'Exporting…' : 'Export .xlsx' }}</button>
                   <button class="button button--primary" type="submit" :disabled="invoking || exporting">{{ invoking ? 'Invoking…' : `Invoke ${selectedRoutine.type.toLowerCase()}` }}</button>

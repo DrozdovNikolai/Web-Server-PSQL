@@ -26,21 +26,27 @@ test('routine inputs include IN and INOUT parameters but not OUT values', () => 
   assert.deepEqual(inputs.map(input => input.useDefault), [false, false, true])
 })
 
-test('routine arguments preserve text values, nulls and trailing PostgreSQL defaults', () => {
+test('routine arguments use names, preserve nulls and allow independent PostgreSQL defaults', () => {
   const argumentsList = buildRoutineArguments([
-    { value: '42', useNull: false, useDefault: false },
-    { value: '', useNull: true, useDefault: false },
-    { value: 'ignored', useNull: false, useDefault: true }
+    { name: 'quantity', dataType: 'integer', value: '42', useNull: false, useDefault: false },
+    { name: 'comment', dataType: 'text', value: '', useNull: true, useDefault: false },
+    { name: 'tax', dataType: 'numeric', value: 'ignored', useNull: false, useDefault: true },
+    { name: 'fee', dataType: 'numeric', value: '0.2', useNull: false, useDefault: false }
   ])
 
-  assert.deepEqual(argumentsList, ['42', null])
+  assert.deepEqual(argumentsList, { quantity: 42, comment: null, fee: 0.2 })
 })
 
-test('a positional REST invocation rejects gaps before supplied optional arguments', () => {
-  assert.throws(() => buildRoutineArguments([
-    { value: '', useNull: false, useDefault: true },
-    { value: 'later', useNull: false, useDefault: false }
-  ]), /only from the end/)
+test('routine argument parsing preserves precise big integers and parses typed JSON', () => {
+  assert.deepEqual(buildRoutineArguments([
+    { name: 'id', dataType: 'bigint', value: '9007199254740993', useNull: false, useDefault: false },
+    { name: 'enabled', dataType: 'boolean', value: 'true', useNull: false, useDefault: false },
+    { name: 'payload', dataType: 'jsonb', value: '{"status":"ok"}', useNull: false, useDefault: false }
+  ]), {
+    id: '9007199254740993',
+    enabled: true,
+    payload: { status: 'ok' }
+  })
 })
 
 test('routine cells render structured and null values readably', () => {
@@ -49,19 +55,19 @@ test('routine cells render structured and null values readably', () => {
   assert.equal(formatRoutineCell(12.5), '12.5')
 })
 
-test('stable routine requests use schema, name and identity argument types instead of OIDs', () => {
+test('workbench requests use named arguments and an optional selected overload instead of OIDs', () => {
   const routine = {
     schema: 'public',
     name: 'calculate_total',
-    identityArguments: 'integer, numeric'
+    overload: 'integer, numeric'
   }
-  const inputs = [{ value: '2', useNull: false, useDefault: false }]
+  const inputs = [{ name: 'quantity', dataType: 'integer', value: '2', useNull: false, useDefault: false }]
 
   assert.equal(routineKey(routine), 'public.calculate_total(integer, numeric)')
   assert.equal(routineEndpoint(routine), '/database/routines/public/calculate_total/invoke')
   assert.deepEqual(buildRoutineRequest(routine, inputs), {
-    identityArguments: 'integer, numeric',
-    arguments: ['2']
+    overload: 'integer, numeric',
+    arguments: { quantity: 2 }
   })
 })
 
@@ -86,7 +92,7 @@ test('raw scalar, object and set results are normalized only for table rendering
 test('Excel export reuses routine arguments and emits bounded presentation settings', () => {
   const routine = {
     name: 'open_report',
-    identityArguments: 'numeric'
+    overload: 'numeric'
   }
   const settings = createExcelSettings(routine)
   settings.startRow = 2
@@ -94,11 +100,11 @@ test('Excel export reuses routine arguments and emits bounded presentation setti
 
   assert.deepEqual(buildExcelRequest(
     routine,
-    [{ value: '100', useNull: false, useDefault: false }],
+    [{ name: 'minimum', dataType: 'numeric', value: '100', useNull: false, useDefault: false }],
     settings
   ), {
-    identityArguments: 'numeric',
-    arguments: ['100'],
+    overload: 'numeric',
+    arguments: { minimum: 100 },
     excel: {
       fileName: 'open_report.xlsx',
       sheetName: 'Report',

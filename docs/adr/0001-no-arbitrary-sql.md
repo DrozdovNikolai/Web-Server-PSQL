@@ -10,7 +10,7 @@ The diploma version accepted SQL fragments, function bodies and DDL through publ
 
 The public API does not accept SQL text, function bodies or DDL. Its browser uses server-generated catalog and table queries. Schema and table identifiers use a strict grammar and quoting; all values are parameters. Results are paginated and commands have a short timeout.
 
-Pre-existing stored functions and procedures are exposed through the separate routine gateway described by ADR 0002. A parameterized schema/name/signature lookup resolves their identity and types from `pg_catalog`; the HTTP client supplies values only and never handles the internal OID. Creating or editing routines, DDL and general SQL execution remain outside the public product scope.
+Pre-existing stored functions and procedures are exposed through the separate routine gateway described by ADR 0002. Parameterized schema/name catalog lookup plus named JSON arguments resolve their identity and types from `pg_catalog`; a canonical overload is optional for unresolved ties, and the HTTP client never handles the internal OID. Creating or editing routines, DDL and general SQL execution remain outside the public product scope.
 
 ## Consequences
 

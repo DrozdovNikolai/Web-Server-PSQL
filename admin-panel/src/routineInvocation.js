@@ -14,13 +14,39 @@ export function createRoutineInputs(routine) {
 }
 
 export function buildRoutineArguments(inputs) {
-  const firstDefault = inputs.findIndex(input => input.useDefault)
-  if (firstDefault >= 0 && inputs.slice(firstDefault + 1).some(input => !input.useDefault)) {
-    throw new Error('Optional arguments can use their PostgreSQL defaults only from the end of the signature.')
+  return Object.fromEntries(inputs
+    .filter(input => !input.useDefault)
+    .map(input => [input.name, input.useNull ? null : parseRoutineInput(input)]))
+}
+
+function parseRoutineInput(input) {
+  const dataType = String(input.dataType || '').toLowerCase()
+  const value = input.value
+
+  if (dataType === 'json' || dataType === 'jsonb') {
+    try {
+      return JSON.parse(value)
+    } catch {
+      throw new Error(`${input.name} must contain valid JSON.`)
+    }
   }
 
-  const supplied = firstDefault < 0 ? inputs : inputs.slice(0, firstDefault)
-  return supplied.map(input => input.useNull ? null : input.value)
+  if (dataType === 'boolean' || dataType === 'bool') {
+    if (value === 'true') return true
+    if (value === 'false') return false
+    throw new Error(`${input.name} must be true or false.`)
+  }
+
+  if (/^(smallint|integer|bigint|int2|int4|int8|numeric|decimal|real|double precision|float4|float8|money|oid)$/.test(dataType)) {
+    const numericValue = Number(value)
+    if (!Number.isFinite(numericValue)) throw new Error(`${input.name} must be a number.`)
+    if (/^(smallint|integer|bigint|int2|int4|int8|oid)$/.test(dataType) && !Number.isInteger(numericValue)) {
+      throw new Error(`${input.name} must be an integer.`)
+    }
+    return Number.isSafeInteger(numericValue) || !Number.isInteger(numericValue) ? numericValue : value
+  }
+
+  return value
 }
 
 export function formatRoutineCell(value) {
@@ -29,7 +55,7 @@ export function formatRoutineCell(value) {
 }
 
 export function routineKey(routine) {
-  return `${routine.schema}.${routine.name}(${routine.identityArguments || ''})`
+  return `${routine.schema}.${routine.name}(${routine.overload || ''})`
 }
 
 export function routineEndpoint(routine, action = 'invoke') {
@@ -38,7 +64,7 @@ export function routineEndpoint(routine, action = 'invoke') {
 
 export function buildRoutineRequest(routine, inputs) {
   return {
-    identityArguments: routine.identityArguments || null,
+    overload: routine.overload || null,
     arguments: buildRoutineArguments(inputs)
   }
 }

@@ -42,7 +42,7 @@ async function submit() {
       <p>Turn existing PostgreSQL functions and procedures into typed REST operations, inspect their results and keep every invocation behind a verified session.</p>
       <div class="signal-grid">
         <div><strong>Typed REST</strong><span>stored routines</span></div>
-        <div><strong>Overload-safe</strong><span>stable signatures</span></div>
+        <div><strong>Overload-safe</strong><span>automatic resolution</span></div>
         <div><strong>Audited</strong><span>bounded execution</span></div>
       </div>
     </div>

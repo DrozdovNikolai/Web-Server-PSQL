@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -16,6 +17,8 @@ namespace PostgresControlPlane.Api.Services.DatabaseRoutines;
 public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
 {
     private const int MaximumCatalogItems = 1000;
+    private const int MaximumReportedOverloadCandidates = 20;
+    private const string AmbiguousFunctionSqlState = "42725";
     private const string CatalogSelect = """
         SELECT p.oid::bigint,
                n.nspname,
@@ -90,8 +93,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
     public async Task<RoutineInvocationResult> InvokeAsync(
         string schema,
         string routineName,
-        string? identityArguments,
-        IReadOnlyList<JsonElement> arguments,
+        string? overload,
+        IReadOnlyDictionary<string, JsonElement> arguments,
         CancellationToken cancellationToken)
     {
         if (!_options.RoutineExecutionEnabled)
@@ -109,7 +112,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         var resolution = await ResolveRoutineAsync(
             schema,
             routineName,
-            identityArguments,
+            overload,
+            arguments,
             cancellationToken);
         if (resolution.Status == RoutineResolutionStatus.NotFound)
         {
@@ -117,10 +121,18 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         }
         if (resolution.Status == RoutineResolutionStatus.Ambiguous)
         {
-            return new(RoutineInvocationStatus.Ambiguous, Detail: resolution.Detail);
+            return new(
+                RoutineInvocationStatus.Ambiguous,
+                Detail: resolution.Detail,
+                Candidates: resolution.Candidates);
+        }
+        if (resolution.Status == RoutineResolutionStatus.InvalidArguments)
+        {
+            return new(RoutineInvocationStatus.InvalidArguments, Detail: resolution.Detail);
         }
 
         var routine = resolution.Routine!;
+        var preparation = resolution.Preparation!;
 
         var disabledReason = GetInvocationDisabledReason(routine);
         if (disabledReason is not null)
@@ -128,27 +140,19 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
             return new(RoutineInvocationStatus.NotInvocable, Detail: disabledReason);
         }
 
-        var preparation = PrepareInvocation(routine, arguments);
-        if (preparation.Detail is not null)
-        {
-            return new(RoutineInvocationStatus.InvalidArguments, Detail: preparation.Detail);
-        }
-
         try
         {
             var response = routine.ReturnsCursor
                 ? await ExecuteCursorAsync(
                     routine,
-                    preparation.InputArguments,
-                    preparation.Values,
+                    preparation.Arguments,
                     _options.MaxRoutineRows,
                     _options.MaxTextLength,
                     _options.MaxResponseBytes,
                     cancellationToken)
                 : await ExecuteAsync(
                     routine,
-                    preparation.InputArguments,
-                    preparation.Values,
+                    preparation.Arguments,
                     cancellationToken);
             return new(RoutineInvocationStatus.Success, response);
         }
@@ -167,6 +171,14 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
             LogInvocationFailure(_logger, routine.Id, "timeout");
             return new(RoutineInvocationStatus.TimedOut);
         }
+        catch (PostgresException exception) when (exception.SqlState == AmbiguousFunctionSqlState)
+        {
+            LogInvocationFailure(_logger, routine.Id, exception.SqlState);
+            return new(
+                RoutineInvocationStatus.Ambiguous,
+                Detail: "PostgreSQL could not select one callable overload for the resolved argument types.",
+                Candidates: resolution.Candidates);
+        }
         catch (PostgresException exception)
         {
             LogInvocationFailure(_logger, routine.Id, exception.SqlState);
@@ -182,8 +194,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
     public async Task<RoutineExcelExportResult> ExportCursorToExcelAsync(
         string schema,
         string routineName,
-        string? identityArguments,
-        IReadOnlyList<JsonElement> arguments,
+        string? overload,
+        IReadOnlyDictionary<string, JsonElement> arguments,
         ExcelExportSettings settings,
         CancellationToken cancellationToken)
     {
@@ -202,7 +214,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         var resolution = await ResolveRoutineAsync(
             schema,
             routineName,
-            identityArguments,
+            overload,
+            arguments,
             cancellationToken);
         if (resolution.Status == RoutineResolutionStatus.NotFound)
         {
@@ -210,10 +223,18 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         }
         if (resolution.Status == RoutineResolutionStatus.Ambiguous)
         {
-            return new(RoutineExcelExportStatus.Ambiguous, Detail: resolution.Detail);
+            return new(
+                RoutineExcelExportStatus.Ambiguous,
+                Detail: resolution.Detail,
+                Candidates: resolution.Candidates);
+        }
+        if (resolution.Status == RoutineResolutionStatus.InvalidArguments)
+        {
+            return new(RoutineExcelExportStatus.InvalidArguments, Detail: resolution.Detail);
         }
 
         var routine = resolution.Routine!;
+        var preparation = resolution.Preparation!;
         var disabledReason = GetInvocationDisabledReason(routine);
         if (disabledReason is not null)
         {
@@ -226,19 +247,12 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
                 Detail: "Excel export requires a function returning pg_catalog.refcursor.");
         }
 
-        var preparation = PrepareInvocation(routine, arguments);
-        if (preparation.Detail is not null)
-        {
-            return new(RoutineExcelExportStatus.InvalidArguments, Detail: preparation.Detail);
-        }
-
         try
         {
             var sourceByteLimit = checked(_options.MaxExcelFileSizeBytes * 4);
             var response = await ExecuteCursorAsync(
                 routine,
-                preparation.InputArguments,
-                preparation.Values,
+                preparation.Arguments,
                 _options.MaxExcelRows,
                 32_767,
                 sourceByteLimit,
@@ -282,6 +296,14 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
             LogInvocationFailure(_logger, routine.Id, "timeout");
             return new(RoutineExcelExportStatus.TimedOut);
         }
+        catch (PostgresException exception) when (exception.SqlState == AmbiguousFunctionSqlState)
+        {
+            LogInvocationFailure(_logger, routine.Id, exception.SqlState);
+            return new(
+                RoutineExcelExportStatus.Ambiguous,
+                Detail: "PostgreSQL could not select one callable overload for the resolved argument types.",
+                Candidates: resolution.Candidates);
+        }
         catch (PostgresException exception)
         {
             LogInvocationFailure(_logger, routine.Id, exception.SqlState);
@@ -297,76 +319,250 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
     private async Task<RoutineResolution> ResolveRoutineAsync(
         string schema,
         string routineName,
-        string? identityArguments,
+        string? overload,
+        IReadOnlyDictionary<string, JsonElement> arguments,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(schema) || schema.Length > 63 ||
             string.IsNullOrWhiteSpace(routineName) || routineName.Length > 63 ||
-            identityArguments?.Length > 1024)
+            overload?.Length > 1024)
         {
             return new(RoutineResolutionStatus.NotFound);
         }
 
-        var hasIdentity = !string.IsNullOrWhiteSpace(identityArguments);
-        var predicate = hasIdentity
-            ? "AND n.nspname = @schema AND p.proname = @routine_name " +
-              "AND pg_catalog.oidvectortypes(p.proargtypes) = @identity_arguments"
-            : "AND n.nspname = @schema AND p.proname = @routine_name";
+        var hasOverload = !string.IsNullOrWhiteSpace(overload);
+        const string predicate = "AND n.nspname = @schema AND p.proname = @routine_name";
         var parameters = new List<NpgsqlParameter>
         {
             new("schema", schema),
             new("routine_name", routineName)
         };
-        if (hasIdentity)
-        {
-            parameters.Add(new NpgsqlParameter("identity_arguments", identityArguments!.Trim()));
-        }
-
-        var routines = await QueryCatalogAsync(
+        var allRoutines = await QueryCatalogAsync(
             predicate,
             cancellationToken,
             parameters.ToArray());
-        return routines.Count switch
+        var routines = hasOverload
+            ? allRoutines
+                .Where(routine => string.Equals(
+                    routine.Overload,
+                    overload!.Trim(),
+                    StringComparison.Ordinal))
+                .ToArray()
+            : allRoutines;
+        if (routines.Count == 0)
         {
-            0 => new(RoutineResolutionStatus.NotFound),
-            1 => new(RoutineResolutionStatus.Success, routines[0]),
-            _ => new(
-                RoutineResolutionStatus.Ambiguous,
-                Detail: "The routine name is overloaded. Send identityArguments from the catalog response.")
-        };
+            return new(RoutineResolutionStatus.NotFound);
+        }
+
+        if (routines.Count == 1 && GetInvocationDisabledReason(routines[0]) is not null)
+        {
+            return new(
+                RoutineResolutionStatus.Success,
+                routines[0],
+                new PreparedInvocation([]));
+        }
+
+        var allMatches = allRoutines
+            .Select(routine => new RoutineMatch(routine, PrepareInvocation(routine, arguments)))
+            .Where(match => match.Preparation.Detail is null)
+            .ToArray();
+        var matches = hasOverload
+            ? allMatches
+                .Where(match => string.Equals(
+                    match.Routine.Overload,
+                    overload!.Trim(),
+                    StringComparison.Ordinal))
+                .ToArray()
+            : allMatches;
+
+        if (matches.Length == 0)
+        {
+            var expected = FormatAvailableOverloads(routines);
+            return new(
+                RoutineResolutionStatus.InvalidArguments,
+                Detail: $"No overload accepts the supplied named arguments. Available overloads: {expected}.");
+        }
+
+        if (hasOverload)
+        {
+            var match = matches[0];
+            var invocationShapeMatches = allMatches
+                .Where(candidate => HaveSameInvocationShape(match, candidate))
+                .ToArray();
+            if (invocationShapeMatches.Length > 1)
+            {
+                return new(
+                    RoutineResolutionStatus.Ambiguous,
+                    Detail: "These overloads have the same callable shape for the supplied arguments, so PostgreSQL cannot disambiguate them. Supply an additional optional argument or change the routine definitions.",
+                    Candidates: invocationShapeMatches
+                        .Take(MaximumReportedOverloadCandidates)
+                        .Select(candidate => ToOverloadCandidate(candidate.Routine))
+                        .ToArray());
+            }
+
+            return new(
+                RoutineResolutionStatus.Success,
+                match.Routine,
+                match.Preparation,
+                Candidates: allMatches
+                    .Take(MaximumReportedOverloadCandidates)
+                    .Select(candidate => ToOverloadCandidate(candidate.Routine))
+                    .ToArray());
+        }
+
+        var invocableMatches = matches
+            .Where(match => GetInvocationDisabledReason(match.Routine) is null)
+            .ToArray();
+        var eligibleMatches = invocableMatches.Length > 0 ? invocableMatches : matches;
+        var bestScore = eligibleMatches.Min(match => match.Preparation.MatchScore);
+        var bestMatches = eligibleMatches
+            .Where(match => match.Preparation.MatchScore == bestScore)
+            .ToArray();
+
+        if (bestMatches.Length == 1)
+        {
+            var match = bestMatches[0];
+            return new(
+                RoutineResolutionStatus.Success,
+                match.Routine,
+                match.Preparation,
+                Candidates: allMatches
+                    .Take(MaximumReportedOverloadCandidates)
+                    .Select(candidate => ToOverloadCandidate(candidate.Routine))
+                    .ToArray());
+        }
+
+        var candidates = bestMatches
+            .Take(MaximumReportedOverloadCandidates)
+            .Select(match => ToOverloadCandidate(match.Routine))
+            .ToArray();
+        var hasIdenticalInvocationShape = bestMatches
+            .Select((match, index) => bestMatches
+                .Skip(index + 1)
+                .Any(candidate => HaveSameInvocationShape(match, candidate)))
+            .Any(hasMatch => hasMatch);
+        return new(
+            RoutineResolutionStatus.Ambiguous,
+            Detail: hasIdenticalInvocationShape
+                ? "More than one overload has the same callable shape for these arguments. Supply an additional optional argument or change the routine definitions."
+                : "More than one overload accepts these arguments. Send overload only when you need to choose one explicitly.",
+            Candidates: candidates);
     }
 
     private PreparedInvocation PrepareInvocation(
         RoutineDefinition routine,
-        IReadOnlyList<JsonElement> arguments)
+        IReadOnlyDictionary<string, JsonElement> arguments)
     {
         var inputArguments = routine.Arguments
             .Where(argument => argument.Mode is "i" or "b")
             .ToArray();
         var requiredArguments = Math.Max(0, inputArguments.Length - routine.DefaultArgumentCount);
-        if (arguments.Count < requiredArguments || arguments.Count > inputArguments.Length)
+
+        var inputDescriptors = inputArguments
+            .Select((argument, index) => new
+            {
+                Definition = argument,
+                Name = GetPublicArgumentName(argument, index)
+            })
+            .ToArray();
+        var argumentsByName = inputDescriptors
+            .ToDictionary(argument => argument.Name, StringComparer.Ordinal);
+
+        var unknownArgument = arguments.Keys.FirstOrDefault(name =>
+            string.IsNullOrEmpty(name) || name.Length > 128 || !argumentsByName.ContainsKey(name));
+        if (unknownArgument is not null)
         {
             return new(
-                inputArguments,
                 [],
-                $"The routine expects between {requiredArguments} and {inputArguments.Length} positional arguments.");
+                Detail: $"Unknown argument '{unknownArgument}'. Accepted names: {string.Join(", ", argumentsByName.Keys)}.");
         }
 
-        var convertedArguments = new List<object?>(arguments.Count);
-        for (var index = 0; index < arguments.Count; index++)
+        var missingRequiredArgument = inputDescriptors
+            .Take(requiredArguments)
+            .FirstOrDefault(argument => !arguments.ContainsKey(argument.Name));
+        if (missingRequiredArgument is not null)
         {
-            if (!TryConvertArgument(arguments[index], inputArguments[index], out var value))
+            return new(
+                [],
+                Detail: $"Required argument '{missingRequiredArgument.Name}' is missing.");
+        }
+
+        var preparedArguments = new List<PreparedArgument>(arguments.Count);
+        var matchScore = 0;
+        for (var index = 0; index < inputArguments.Length; index++)
+        {
+            var definition = inputArguments[index];
+            var publicName = GetPublicArgumentName(definition, index);
+            if (!arguments.TryGetValue(publicName, out var argument))
             {
-                return new(
-                    inputArguments,
-                    [],
-                    $"Argument {index + 1} is not valid for PostgreSQL type {inputArguments[index].DisplayType}.");
+                continue;
             }
 
-            convertedArguments.Add(value);
+            if (!TryConvertArgument(argument, definition, out var value, out var conversionScore))
+            {
+                return new(
+                    [],
+                    Detail: $"Argument '{publicName}' is not compatible with PostgreSQL type {definition.DisplayType}.");
+            }
+
+            preparedArguments.Add(new PreparedArgument(definition, value, index));
+            matchScore += conversionScore;
         }
 
-        return new(inputArguments, convertedArguments);
+        if (inputArguments.Any(argument => string.IsNullOrWhiteSpace(argument.Name)) &&
+            preparedArguments.Select(argument => argument.InputPosition)
+                .Where((position, index) => position != index)
+                .Any())
+        {
+            return new(
+                [],
+                Detail: "A routine with unnamed parameters can omit only trailing optional arguments.");
+        }
+
+        return new(preparedArguments, matchScore);
+    }
+
+    private static string GetPublicArgumentName(
+        RoutineArgumentDefinition argument,
+        int inputPosition) => string.IsNullOrWhiteSpace(argument.Name)
+            ? $"${inputPosition + 1}"
+            : argument.Name;
+
+    private static RoutineOverloadCandidateResponse ToOverloadCandidate(RoutineDefinition routine) =>
+        new(
+            routine.Overload,
+            $"{routine.Schema}.{routine.Name}({routine.SignatureArguments})");
+
+    private static string FormatAvailableOverloads(IReadOnlyCollection<RoutineDefinition> routines)
+    {
+        var values = routines
+            .Take(MaximumReportedOverloadCandidates)
+            .Select(routine => $"{routine.Name}({routine.Overload})");
+        var suffix = routines.Count > MaximumReportedOverloadCandidates
+            ? $", … and {routines.Count - MaximumReportedOverloadCandidates} more"
+            : string.Empty;
+        return string.Concat(string.Join(", ", values), suffix);
+    }
+
+    private static bool HaveSameInvocationShape(RoutineMatch selected, RoutineMatch candidate)
+    {
+        if (selected.Routine.Type != candidate.Routine.Type ||
+            selected.Preparation.Arguments.Count != candidate.Preparation.Arguments.Count)
+        {
+            return false;
+        }
+
+        var candidateTypes = candidate.Preparation.Arguments.ToDictionary(
+            argument => GetPublicArgumentName(argument.Definition, argument.InputPosition),
+            argument => (argument.Definition.TypeSchema, argument.Definition.TypeName),
+            StringComparer.Ordinal);
+        return selected.Preparation.Arguments.All(argument =>
+        {
+            var name = GetPublicArgumentName(argument.Definition, argument.InputPosition);
+            return candidateTypes.TryGetValue(name, out var type) &&
+                   type.TypeSchema == argument.Definition.TypeSchema &&
+                   type.TypeName == argument.Definition.TypeName;
+        });
     }
 
     private async Task<IReadOnlyList<RoutineDefinition>> QueryCatalogAsync(
@@ -438,11 +634,10 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
 
     private async Task<RoutineInvocationResponse> ExecuteAsync(
         RoutineDefinition routine,
-        IReadOnlyList<RoutineArgumentDefinition> argumentDefinitions,
-        List<object?> arguments,
+        IReadOnlyList<PreparedArgument> arguments,
         CancellationToken cancellationToken)
     {
-        var placeholders = CreateInvocationPlaceholders(routine, argumentDefinitions, arguments.Count);
+        var placeholders = CreateInvocationPlaceholders(routine, arguments);
         var qualifiedName = GetQualifiedName(routine);
         var invocation = string.Join(", ", placeholders);
         var sql = routine.Type == "PROCEDURE"
@@ -476,8 +671,7 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
 
     private async Task<RoutineInvocationResponse> ExecuteCursorAsync(
         RoutineDefinition routine,
-        IReadOnlyList<RoutineArgumentDefinition> argumentDefinitions,
-        List<object?> arguments,
+        IReadOnlyList<PreparedArgument> arguments,
         int maxRows,
         int maxTextLength,
         int maxBytes,
@@ -493,7 +687,7 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         var started = Stopwatch.GetTimestamp();
 
-        var placeholders = CreateInvocationPlaceholders(routine, argumentDefinitions, arguments.Count);
+        var placeholders = CreateInvocationPlaceholders(routine, arguments);
         var callSql = $"SELECT {GetQualifiedName(routine)}({string.Join(", ", placeholders)})";
         string cursorName;
         await using (var callCommand = CreateCommand(callSql, _options.RoutineCommandTimeoutSeconds))
@@ -594,10 +788,18 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         var arguments = routine.Arguments.Select(argument =>
         {
             var isInput = argument.Mode is "i" or "b";
-            var required = isInput && inputPosition++ < requiredCount;
+            var publicName = string.IsNullOrWhiteSpace(argument.Name)
+                ? isInput ? $"${inputPosition + 1}" : $"${argument.Position}"
+                : argument.Name;
+            var required = isInput && inputPosition < requiredCount;
+            if (isInput)
+            {
+                inputPosition++;
+            }
+
             return new DatabaseRoutineArgumentResponse(
                 argument.Position,
-                string.IsNullOrWhiteSpace(argument.Name) ? $"${argument.Position}" : argument.Name,
+                publicName,
                 GetArgumentMode(argument.Mode),
                 argument.DisplayType,
                 required);
@@ -608,8 +810,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
             routine.Schema,
             routine.Name,
             routine.Type,
-            $"{routine.Schema}.{routine.Name}({routine.IdentityArguments})",
-            routine.IdentityArgumentTypes,
+            $"{routine.Schema}.{routine.Name}({routine.SignatureArguments})",
+            routine.Overload,
             routine.ReturnType,
             routine.ReturnsSet,
             routine.ReturnsCursor,
@@ -670,24 +872,26 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
 
     private static bool IsSupportedInputType(RoutineArgumentDefinition argument) =>
         argument.TypeKind is "b" or "d" or "e" or "r" or "m" &&
-        argument.TypeCategory is not ("A" or "C" or "P");
+        argument.TypeCategory is "B" or "D" or "E" or "G" or "I" or "N" or
+            "R" or "S" or "T" or "U" or "V";
 
     private bool TryConvertArgument(
         JsonElement argument,
         RoutineArgumentDefinition definition,
-        out object? value)
+        out object? value,
+        out int score)
     {
         if (argument.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
         {
             value = null;
+            score = 1000;
             return true;
         }
 
         if (definition.TypeSchema == "pg_catalog" && definition.TypeName is "json" or "jsonb")
         {
-            value = argument.ValueKind == JsonValueKind.String
-                ? argument.GetString()
-                : argument.GetRawText();
+            value = argument.GetRawText();
+            score = argument.ValueKind is JsonValueKind.Object or JsonValueKind.Array ? 0 : 50;
             return value is string json && json.Length <= _options.MaxRoutineArgumentLength;
         }
 
@@ -696,6 +900,7 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
             if (argument.ValueKind != JsonValueKind.String)
             {
                 value = null;
+                score = int.MaxValue;
                 return false;
             }
 
@@ -705,26 +910,167 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
                 if (bytes.Length > _options.MaxRoutineArgumentLength)
                 {
                     value = null;
+                    score = int.MaxValue;
                     return false;
                 }
 
                 value = string.Concat("\\x", Convert.ToHexString(bytes));
+                score = 0;
                 return true;
             }
             catch (FormatException)
             {
                 value = null;
+                score = int.MaxValue;
                 return false;
             }
         }
 
-        value = argument.ValueKind switch
+        if (definition.TypeCategory == "B")
         {
-            JsonValueKind.String => argument.GetString(),
-            JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False => argument.GetRawText(),
-            _ => null
+            if (argument.ValueKind is JsonValueKind.True or JsonValueKind.False)
+            {
+                value = argument.GetRawText();
+                score = 0;
+                return true;
+            }
+
+            if (argument.ValueKind == JsonValueKind.String &&
+                bool.TryParse(argument.GetString(), out _))
+            {
+                value = argument.GetString();
+                score = 100;
+                return true;
+            }
+
+            value = null;
+            score = int.MaxValue;
+            return false;
+        }
+
+        if (definition.TypeCategory == "N")
+        {
+            if (argument.ValueKind == JsonValueKind.Number)
+            {
+                value = argument.GetRawText();
+                return TryScoreNumericValue((string)value, definition.TypeName, 0, out score);
+            }
+
+            if (argument.ValueKind == JsonValueKind.String)
+            {
+                var text = argument.GetString();
+                if (text is not null && text.Length <= _options.MaxRoutineArgumentLength &&
+                    TryScoreNumericValue(text, definition.TypeName, 100, out score))
+                {
+                    value = text;
+                    return true;
+                }
+            }
+
+            value = null;
+            score = int.MaxValue;
+            return false;
+        }
+
+        if (argument.ValueKind == JsonValueKind.String &&
+            definition.TypeCategory is "D" or "E" or "G" or "I" or "R" or "S" or "T" or "U" or "V")
+        {
+            value = argument.GetString();
+            score = 0;
+            return value is string scalar && scalar.Length <= _options.MaxRoutineArgumentLength;
+        }
+
+        value = null;
+        score = int.MaxValue;
+        return false;
+    }
+
+    private static bool TryScoreNumericValue(
+        string text,
+        string typeName,
+        int coercionPenalty,
+        out int score)
+    {
+        score = int.MaxValue;
+        if (!IsJsonNumber(text))
+        {
+            return false;
+        }
+
+        var isInteger = text.IndexOfAny(['.', 'e', 'E']) < 0;
+        if (isInteger && BigInteger.TryParse(
+                text,
+                NumberStyles.AllowLeadingSign,
+                CultureInfo.InvariantCulture,
+                out var integer))
+        {
+            var typeScore = typeName switch
+            {
+                "int4" when integer >= int.MinValue && integer <= int.MaxValue => 0,
+                "int8" when integer >= long.MinValue && integer <= long.MaxValue =>
+                    integer >= int.MinValue && integer <= int.MaxValue ? 10 : 0,
+                "int2" when integer >= short.MinValue && integer <= short.MaxValue => 20,
+                "oid" when integer >= uint.MinValue && integer <= uint.MaxValue => 20,
+                "numeric" => 30,
+                "money" when decimal.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) => 35,
+                "float8" when double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var doubleNumber) && double.IsFinite(doubleNumber) => 40,
+                "float4" when float.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var floatNumber) && float.IsFinite(floatNumber) => 50,
+                _ => int.MaxValue
+            };
+            if (typeScore != int.MaxValue)
+            {
+                score = coercionPenalty + typeScore;
+                return true;
+            }
+        }
+
+        var fractionalTypeScore = typeName switch
+        {
+            "numeric" => 0,
+            "money" when decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out _) => 10,
+            "float8" when double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) &&
+                          double.IsFinite(number) => 20,
+            "float4" when float.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var number) &&
+                          float.IsFinite(number) => 30,
+            _ => int.MaxValue
         };
-        return value is string scalar && scalar.Length <= _options.MaxRoutineArgumentLength;
+        if (fractionalTypeScore != int.MaxValue)
+        {
+            score = coercionPenalty + fractionalTypeScore;
+            return true;
+        }
+
+        // Domains and extension-provided numeric types keep PostgreSQL as the final validator.
+        if (typeName is not "int2" and not "int4" and not "int8" and not "oid" and
+            not "numeric" and not "money" and not "float4" and not "float8")
+        {
+            score = coercionPenalty + 100;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsJsonNumber(string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.ValueKind == JsonValueKind.Number &&
+                   document.RootElement.GetRawText().Length == value.Length;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static (object? Value, bool Truncated) ReadBoundedValue(
@@ -742,6 +1088,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         {
             string text when text.Length > maxTextLength =>
                 (string.Concat(text.AsSpan(0, maxTextLength), "…"), true),
+            string text when reader.GetDataTypeName(index) is "json" or "jsonb" =>
+                (ParseJsonResult(text), false),
             string text => (text, false),
             byte[] bytes when bytes.Length > maxTextLength =>
                 ($"{Convert.ToBase64String(bytes, 0, maxTextLength)}…", true),
@@ -756,10 +1104,24 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         };
     }
 
+    private static object ParseJsonResult(string value)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(value);
+            return document.RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return value;
+        }
+    }
+
     private static int EstimateSize(object? value) => value switch
     {
         null => 4,
         string text => text.Length * sizeof(char),
+        JsonElement json => json.GetRawText().Length * sizeof(char),
         byte[] bytes => bytes.Length,
         Array array => Math.Min(array.Length, 100) * 32,
         _ => 32
@@ -792,13 +1154,46 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
 
     private static List<string> CreateInvocationPlaceholders(
         RoutineDefinition routine,
-        IReadOnlyList<RoutineArgumentDefinition> argumentDefinitions,
-        int argumentCount)
+        IReadOnlyList<PreparedArgument> arguments)
     {
+        var argumentIndexes = arguments
+            .Select((argument, index) => new { argument, index })
+            .ToDictionary(item => item.argument.Definition.Position);
+        var canUseNamedNotation = routine.Type == "FUNCTION"
+            ? routine.Arguments
+                .Where(argument => argument.Mode is "i" or "b")
+                .All(argument => !string.IsNullOrWhiteSpace(argument.Name))
+            : routine.Arguments.All(argument => !string.IsNullOrWhiteSpace(argument.Name));
+
+        if (canUseNamedNotation)
+        {
+            var namedPlaceholders = new List<string>();
+            foreach (var definition in routine.Arguments)
+            {
+                if (definition.Mode is "o" or "t")
+                {
+                    if (routine.Type == "PROCEDURE")
+                    {
+                        namedPlaceholders.Add($"{QuoteIdentifier(definition.Name)} => NULL");
+                    }
+
+                    continue;
+                }
+
+                if (argumentIndexes.TryGetValue(definition.Position, out var supplied))
+                {
+                    namedPlaceholders.Add(
+                        $"{QuoteIdentifier(definition.Name)} => " +
+                        CreateArgumentPlaceholder(definition, supplied.index));
+                }
+            }
+
+            return namedPlaceholders;
+        }
+
         var placeholders = new List<string>();
         if (routine.Type == "PROCEDURE")
         {
-            var inputIndex = 0;
             foreach (var definition in routine.Arguments)
             {
                 if (definition.Mode is "o" or "t")
@@ -807,30 +1202,31 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
                     continue;
                 }
 
-                placeholders.Add(inputIndex < argumentCount
-                    ? CreateArgumentPlaceholder(definition, inputIndex)
+                placeholders.Add(argumentIndexes.TryGetValue(definition.Position, out var supplied)
+                    ? CreateArgumentPlaceholder(definition, supplied.index)
                     : "DEFAULT");
-                inputIndex++;
             }
         }
         else
         {
-            for (var index = 0; index < argumentCount; index++)
+            for (var index = 0; index < arguments.Count; index++)
             {
-                placeholders.Add(CreateArgumentPlaceholder(argumentDefinitions[index], index));
+                placeholders.Add(CreateArgumentPlaceholder(arguments[index].Definition, index));
             }
         }
 
         return placeholders;
     }
 
-    private static void AddArgumentParameters(DbCommand command, List<object?> arguments)
+    private static void AddArgumentParameters(
+        DbCommand command,
+        IReadOnlyList<PreparedArgument> arguments)
     {
         for (var index = 0; index < arguments.Count; index++)
         {
             command.Parameters.Add(new NpgsqlParameter($"argument{index}", NpgsqlDbType.Unknown)
             {
-                Value = arguments[index] ?? DBNull.Value
+                Value = arguments[index].Value ?? DBNull.Value
             });
         }
     }
@@ -869,8 +1265,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         string schema,
         string name,
         string type,
-        string identityArguments,
-        string identityArgumentTypes,
+        string signatureArguments,
+        string overload,
         string? returnType,
         bool returnsSet,
         string volatility,
@@ -885,8 +1281,8 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
         public string Schema { get; } = schema;
         public string Name { get; } = name;
         public string Type { get; } = type;
-        public string IdentityArguments { get; } = identityArguments;
-        public string IdentityArgumentTypes { get; } = identityArgumentTypes;
+        public string SignatureArguments { get; } = signatureArguments;
+        public string Overload { get; } = overload;
         public string? ReturnType { get; } = returnType;
         public bool ReturnsSet { get; } = returnsSet;
         public bool ReturnsCursor { get; } =
@@ -916,18 +1312,30 @@ public sealed partial class DatabaseRoutineService : IDatabaseRoutineService
     {
         Success,
         NotFound,
-        Ambiguous
+        Ambiguous,
+        InvalidArguments
     }
 
     private sealed record RoutineResolution(
         RoutineResolutionStatus Status,
         RoutineDefinition? Routine = null,
-        string? Detail = null);
+        PreparedInvocation? Preparation = null,
+        string? Detail = null,
+        IReadOnlyList<RoutineOverloadCandidateResponse>? Candidates = null);
 
     private sealed record PreparedInvocation(
-        IReadOnlyList<RoutineArgumentDefinition> InputArguments,
-        List<object?> Values,
+        IReadOnlyList<PreparedArgument> Arguments,
+        int MatchScore = 0,
         string? Detail = null);
+
+    private sealed record PreparedArgument(
+        RoutineArgumentDefinition Definition,
+        object? Value,
+        int InputPosition);
+
+    private sealed record RoutineMatch(
+        RoutineDefinition Routine,
+        PreparedInvocation Preparation);
 
     private sealed record BoundedRows(
         IReadOnlyList<string> Columns,

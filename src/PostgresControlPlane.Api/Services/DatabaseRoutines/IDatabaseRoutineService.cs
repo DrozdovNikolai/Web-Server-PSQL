@@ -11,15 +11,15 @@ public interface IDatabaseRoutineService
     Task<RoutineInvocationResult> InvokeAsync(
         string schema,
         string routineName,
-        string? identityArguments,
-        IReadOnlyList<System.Text.Json.JsonElement> arguments,
+        string? overload,
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement> arguments,
         CancellationToken cancellationToken);
 
     Task<RoutineExcelExportResult> ExportCursorToExcelAsync(
         string schema,
         string routineName,
-        string? identityArguments,
-        IReadOnlyList<System.Text.Json.JsonElement> arguments,
+        string? overload,
+        IReadOnlyDictionary<string, System.Text.Json.JsonElement> arguments,
         ExcelExportSettings settings,
         CancellationToken cancellationToken);
 }
@@ -40,7 +40,8 @@ public enum RoutineInvocationStatus
 public sealed record RoutineInvocationResult(
     RoutineInvocationStatus Status,
     RoutineInvocationResponse? Response = null,
-    string? Detail = null);
+    string? Detail = null,
+    IReadOnlyList<RoutineOverloadCandidateResponse>? Candidates = null);
 
 public enum RoutineExcelExportStatus
 {
@@ -63,4 +64,5 @@ public sealed record RoutineExcelFile(byte[] Content, string FileName);
 public sealed record RoutineExcelExportResult(
     RoutineExcelExportStatus Status,
     RoutineExcelFile? File = null,
-    string? Detail = null);
+    string? Detail = null,
+    IReadOnlyList<RoutineOverloadCandidateResponse>? Candidates = null);
