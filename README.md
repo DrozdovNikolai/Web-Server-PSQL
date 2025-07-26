@@ -6,6 +6,14 @@ A security-first .NET and Vue gateway that exposes existing PostgreSQL functions
 
 The project began as a university diploma whose central idea was calling PostgreSQL stored routines over REST. It has since been rebuilt as a portfolio-grade system: catalog-driven overload resolution, named parameter-only invocation, no arbitrary SQL endpoint, deny-by-default authorization, revocable JWT sessions, bounded results, automated tests and a polished web console.
 
+## Live API demo
+
+[![PostgreSQL Routine Gateway live API walkthrough](docs/media/routine-gateway-demo.gif)](docs/media/routine-gateway-demo.gif)
+
+This walkthrough was generated from responses returned by the running Docker Compose stack—not from mocked payloads. It shows one stable REST address selecting two PostgreSQL overloads from ordinary JSON, an explicit `409` for a genuinely ambiguous `null`, a `refcursor` fetched as JSON, and the same cursor exported as a real workbook.
+
+[Download the generated Excel report](docs/media/orders-report.xlsx) · [Open the static 1280×720 poster](docs/media/routine-gateway-demo.png) · [Reproduce the media locally](docs/media/README.md)
+
 ## What it does
 
 - Discovers PostgreSQL function/procedure signatures and invokes them through stable schema/name REST addresses using named JSON arguments and catalog-resolved types.
