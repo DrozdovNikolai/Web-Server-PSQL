@@ -1,8 +1,36 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: superhero-api-config
+  name: postgres-control-config
+  namespace: postgres-control
 data:
-  DB_HOST: "195.93.252.168"
-  DB_PORT: "5432"
-  DB_NAME: "restoretest116"
+  Jwt__Issuer: "PostgresControlPlane"
+  Jwt__Audience: "PostgresControlPlane.Client"
+  Jwt__AccessTokenLifetimeMinutes: "15"
+  Hosting__PathBase: "/server"
+  Kubernetes__Enabled: "true"
+  Kubernetes__Namespace: "postgres-control"
+  Kubernetes__WorkloadImage: "ghcr.io/example/postgres-control-plane:1.0.0"
+  DatabaseInitialization__ApplyMigrations: "true"
+  BootstrapAdmin__Enabled: "true"
+  Storage__RootPath: "data/uploads"
+  Storage__MaxFileSizeBytes: "10485760"
+  Audit__RetentionDays: "90"
+  Audit__CleanupIntervalHours: "24"
+  DatabaseBrowser__CommandTimeoutSeconds: "5"
+  DatabaseBrowser__MaxPageSize: "200"
+  DatabaseBrowser__MaxTextLength: "4096"
+  DatabaseBrowser__MaxResponseBytes: "1048576"
+  DatabaseBrowser__RoutineExecutionEnabled: "true"
+  DatabaseBrowser__AllowedRoutineSchemas__0: "public"
+  DatabaseBrowser__AllowProcedures: "true"
+  DatabaseBrowser__AllowSecurityDefiner: "false"
+  DatabaseBrowser__RoutineCommandTimeoutSeconds: "10"
+  DatabaseBrowser__MaxRoutineArguments: "32"
+  DatabaseBrowser__MaxRoutineArgumentLength: "16384"
+  DatabaseBrowser__MaxRoutineRows: "200"
+  DatabaseBrowser__RoutineExcelExportEnabled: "true"
+  DatabaseBrowser__MaxExcelRows: "10000"
+  DatabaseBrowser__MaxExcelColumns: "256"
+  DatabaseBrowser__MaxExcelCells: "200000"
+  DatabaseBrowser__MaxExcelFileSizeBytes: "10485760"

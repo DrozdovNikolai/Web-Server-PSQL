@@ -5,13 +5,19 @@ import { fileURLToPath, URL } from 'node:url'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [vue()],
-  base: '/adm',
+  base: '/',
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
-  define: {
-    'import.meta.env.VITE_API_URL': JSON.stringify('https://ncatbird.ru/ums/server/api')
+  server: {
+    port: 5173,
+    proxy: {
+      '/server': {
+        target: 'http://localhost:5050',
+        changeOrigin: true
+      }
+    }
   }
-}) 
+})

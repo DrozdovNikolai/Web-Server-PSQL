@@ -1,12 +1,13 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: superhero-api
+  name: postgres-control
+  namespace: postgres-control
 spec:
+  type: ClusterIP
   selector:
-    app: superhero-api
+    app.kubernetes.io/name: postgres-control-plane
   ports:
-  - port: 80
-    targetPort: 8080
-    nodePort: 30080
-  type: NodePort 
+    - name: http
+      port: 80
+      targetPort: http

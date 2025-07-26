@@ -1,6 +1,9 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: superhero-api
+  name: postgres-control
   labels:
-    name: superhero-api 
+    app.kubernetes.io/name: postgres-control-plane
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

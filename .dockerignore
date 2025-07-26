@@ -1,0 +1,17 @@
+.git
+.github
+.vs
+.idea
+.env
+.env.*
+!.env.example
+**/bin
+**/obj
+**/node_modules
+admin-panel/dist
+data
+docker/postgres-init
+TestResults
+*.user
+*.log
+IMPROVEMENT_PLAN.md

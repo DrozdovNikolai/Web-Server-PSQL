@@ -1,37 +1,30 @@
-# Container deployment script for SuperHeroAPI
+param(
+    [string]$Image = "postgres-control-plane:1.0.0"
+)
 
-# Build the Docker image
-Write-Host "Building Docker image..." -ForegroundColor Green
-docker build -t superhero-api:latest .
+$ErrorActionPreference = "Stop"
 
-# Check if Kubernetes is available
-try {
-    $kubeVersion = kubectl version --short
-    Write-Host "Kubernetes is available: $kubeVersion" -ForegroundColor Green
-} catch {
-    Write-Host "Error: Kubernetes is not available or not properly configured." -ForegroundColor Red
-    Write-Host "Please ensure kubectl is installed and configured correctly." -ForegroundColor Yellow
-    exit 1
+if (-not (Test-Path "k8s/secret.yaml")) {
+    throw "Create k8s/secret.yaml from k8s/secret.example.yaml before deploying."
 }
 
-# Create the Kubernetes namespace if it doesn't exist
-Write-Host "Ensuring namespace exists..." -ForegroundColor Green
-kubectl apply -f k8s/namespace.yaml
+Write-Host "Building $Image" -ForegroundColor Green
+docker build --tag $Image .
 
-# Apply Kubernetes configurations
-Write-Host "Applying Kubernetes configurations..." -ForegroundColor Green
-kubectl apply -f k8s/configmap.yaml
-kubectl apply -f k8s/secret.yaml
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
+Write-Host "Applying namespace-scoped resources" -ForegroundColor Green
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/service-account.yaml
 kubectl apply -f k8s/k8s-role.yaml
 kubectl apply -f k8s/k8s-rolebinding.yaml
-kubectl apply -f k8s/persistent-volume.yaml
+kubectl apply -f k8s/resource-limits.yaml
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
 kubectl apply -f k8s/persistent-volume-claim.yaml
-kubectl apply -f k8s/file-ingress.yaml
-# Check deployment status
-Write-Host "Checking deployment status..." -ForegroundColor Green
-kubectl get deployments,pods,services,configmaps,secrets -n default
+kubectl apply -f k8s/network-policy.yaml
+kubectl apply -f k8s/deployment.yaml
+kubectl apply -f k8s/service.yaml
 
-Write-Host "Deployment completed successfully!" -ForegroundColor Green
-Write-Host "You can access the admin panel at: http://localhost:8080" -ForegroundColor Cyan 
+kubectl set image deployment/postgres-control api=$Image --namespace postgres-control
+kubectl rollout status deployment/postgres-control --namespace postgres-control --timeout 180s
+
+Write-Host "Deployment is ready. Apply k8s/ingress.example.yaml only after configuring its hostname and TLS secret." -ForegroundColor Cyan

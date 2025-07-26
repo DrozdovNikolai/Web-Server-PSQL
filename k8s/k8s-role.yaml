@@ -1,14 +1,15 @@
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
-  name: superhero-api-role
+  name: postgres-control-provisioner
+  namespace: postgres-control
 rules:
-- apiGroups: [""]
-  resources: ["configmaps", "secrets", "pods", "services", "persistentvolumeclaims", "nodes"]
-  verbs: ["create", "get", "list", "update", "delete"]
-- apiGroups: ["apps"]
-  resources: ["deployments"]
-  verbs: ["create", "get", "list", "update", "delete"]
-- apiGroups: ["networking.k8s.io"]
-  resources: ["ingresses"]
-  verbs: ["create", "get", "list", "update", "delete"] 
+  - apiGroups: [""]
+    resources: ["configmaps", "secrets", "services", "persistentvolumeclaims"]
+    verbs: ["create", "get", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses"]
+    verbs: ["create", "get", "update", "patch", "delete"]

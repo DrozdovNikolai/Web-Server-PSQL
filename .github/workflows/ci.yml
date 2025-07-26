@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: .NET build and security tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            src/**/*.csproj
+            tests/**/*.csproj
+      - name: Restore
+        run: dotnet restore PostgresControlPlane.sln --locked-mode
+      - name: Restore local tools
+        run: dotnet tool restore
+      - name: Verify formatting
+        run: dotnet format PostgresControlPlane.sln --no-restore --verify-no-changes
+      - name: Build
+        run: dotnet build PostgresControlPlane.sln --configuration Release --no-restore
+      - name: Test
+        run: dotnet test PostgresControlPlane.sln --configuration Release --no-build --collect:"XPlat Code Coverage" --results-directory TestResults
+      - name: Audit NuGet dependencies
+        run: dotnet list PostgresControlPlane.sln package --vulnerable --include-transitive
+      - name: Validate migrations
+        run: >-
+          dotnet ef migrations script --idempotent --no-build --configuration Release
+          --project src/PostgresControlPlane.Api/PostgresControlPlane.Api.csproj
+          --startup-project src/PostgresControlPlane.Api/PostgresControlPlane.Api.csproj
+          --output ${{ runner.temp }}/migrations.sql
+      - name: Generate OpenAPI document
+        env:
+          ConnectionStrings__MainDatabase: Host=localhost;Database=unused
+          Jwt__SigningKey: ci-only-signing-key-with-more-than-32-characters
+          Jwt__Issuer: PostgresControlPlane.CI
+          Jwt__Audience: PostgresControlPlane.CI.Client
+          ASPNETCORE_ENVIRONMENT: Development
+        run: >-
+          dotnet swagger tofile
+          --output ${{ runner.temp }}/openapi.json
+          src/PostgresControlPlane.Api/bin/Release/net10.0/PostgresControlPlane.Api.dll
+          v1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: ignore
+
+  frontend:
+    name: Vue lint, build and audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: admin-panel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: npm
+          cache-dependency-path: admin-panel/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - run: npm audit --audit-level=moderate
+
+  containers:
+    name: Container builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: postgres-control-plane-api:ci
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: admin-panel
+          file: admin-panel/Dockerfile
+          push: false
+          load: true
+          tags: postgres-control-plane-web:ci
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: postgres-control-plane-api:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+      - name: Scan web image
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: postgres-control-plane-web:ci
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
+      - name: Generate API SBOM
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: postgres-control-plane-api:ci
+          format: cyclonedx
+          output: api-sbom.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: api-sbom
+          path: api-sbom.cdx.json
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: csharp,javascript-typescript
+      - uses: github/codeql-action/autobuild@v4
+      - uses: github/codeql-action/analyze@v4
+
+  repository-scan:
+    name: Vulnerability and configuration scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: 1
