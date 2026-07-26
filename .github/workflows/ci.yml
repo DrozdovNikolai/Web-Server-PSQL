@@ -55,7 +55,7 @@ jobs:
           --output ${{ runner.temp }}/openapi.json
           src/PostgresControlPlane.Api/bin/Release/net10.0/PostgresControlPlane.Api.dll
           v1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results
@@ -123,7 +123,7 @@ jobs:
           image-ref: postgres-control-plane-api:ci
           format: cyclonedx
           output: api-sbom.cdx.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: api-sbom
           path: api-sbom.cdx.json
