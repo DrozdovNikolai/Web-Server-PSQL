@@ -9,7 +9,7 @@ COPY index.html vite.config.js ./
 COPY src/ src/
 RUN npm run build
 
-FROM nginxinc/nginx-unprivileged:1.30.4-alpine3.24 AS runtime
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine3.24 AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
